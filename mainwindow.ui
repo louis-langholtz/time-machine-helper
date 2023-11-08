@@ -21,6 +21,13 @@
     <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Destination Info</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QTableWidget" name="destinationsWidget">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -68,6 +75,20 @@
           <string>Last Destination</string>
          </property>
         </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>File System Info</string>
+        </property>
        </widget>
       </item>
       <item>
