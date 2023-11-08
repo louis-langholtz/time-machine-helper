@@ -23,6 +23,7 @@
 #include <QFileSystemWatcher>
 #include <QFont>
 #include <QHeaderView>
+#include <QPushButton>
 
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
@@ -332,8 +333,13 @@ MainWindow::MainWindow(QWidget *parent):
     fileSystemWatcher(new QFileSystemWatcher(this))
 {
     this->ui->setupUi(this);
+
+    this->ui->deletingPushButton->setDisabled(true);
+    this->ui->restoringPushButton->setDisabled(true);
+    this->ui->verifyingPushButton->setDisabled(true);
     this->ui->mountPointsWidget->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
+
     QSettings settings;
     if (settings.contains(tmutilSettingsKey)) {
         qDebug() << "settings appears to contain:" << tmutilSettingsKey;
@@ -366,6 +372,14 @@ MainWindow::MainWindow(QWidget *parent):
 
     QObject::connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
                      this, &MainWindow::updateMountPointsDir);
+    QObject::connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
+                     this, &MainWindow::selectedPathsChanged);
+    QObject::connect(this->ui->deletingPushButton, &QPushButton::pressed,
+                     this, &MainWindow::deleteSelectedPaths);
+    QObject::connect(this->ui->restoringPushButton, &QPushButton::pressed,
+                     this, &MainWindow::restoreSelectedPaths);
+    QObject::connect(this->ui->verifyingPushButton, &QPushButton::pressed,
+                     this, &MainWindow::verifySelectedPaths);
 
     readDestinationInfo();
 }
@@ -759,5 +773,42 @@ void MainWindow::updateBackupStatusWidget(const PlistObject &plist)
 void MainWindow::updateMountPointsDir(const QString &path)
 {
     qInfo() << "updateMountPointsDir called!";
+}
+
+QStringList toStringList(const QList<QTreeWidgetItem*>& items)
+{
+    QStringList result;
+    for (const auto* item: items) {
+        const auto string = item->data(0, Qt::ItemDataRole::UserRole).toString();
+        result += string;
+    }
+    return result;
+}
+
+void MainWindow::deleteSelectedPaths()
+{
+    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    qInfo() << "deleteSelectedPaths called for" << selectedPaths;
+}
+
+void MainWindow::restoreSelectedPaths()
+{
+    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    qInfo() << "restoreSelectedPaths called for" << selectedPaths;
+}
+
+void MainWindow::verifySelectedPaths()
+{
+    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    qInfo() << "verifySelectedPaths called for" << selectedPaths;
+}
+
+void MainWindow::selectedPathsChanged()
+{
+    qInfo() << "selectedPathsChanged called!";
+    const auto selectionIsEmpty = this->ui->mountPointsWidget->selectedItems().empty();
+    this->ui->deletingPushButton->setDisabled(selectionIsEmpty);
+    this->ui->restoringPushButton->setDisabled(selectionIsEmpty);
+    this->ui->verifyingPushButton->setDisabled(selectionIsEmpty);
 }
 

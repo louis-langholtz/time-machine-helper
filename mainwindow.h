@@ -37,6 +37,10 @@ public slots:
     void updateMountPointsView(const std::vector<std::filesystem::path>& paths);
     void updateMountPointsDir(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
+    void deleteSelectedPaths();
+    void restoreSelectedPaths();
+    void verifySelectedPaths();
+    void selectedPathsChanged();
 
 signals:
     void gotDestinationsPlist(const PlistObject& plist);

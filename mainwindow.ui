@@ -210,22 +210,31 @@
        <layout class="QHBoxLayout" name="availableActionsLayout">
         <item>
          <widget class="QPushButton" name="deletingPushButton">
+          <property name="toolTip">
+           <string>Deletes selected paths.</string>
+          </property>
           <property name="text">
-           <string>Delete</string>
+           <string>Delete...</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="verifyingPushButton">
+          <property name="toolTip">
+           <string>Verifies selected paths.</string>
+          </property>
           <property name="text">
-           <string>Verify</string>
+           <string>Verify...</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="restoringPushButton">
+          <property name="toolTip">
+           <string>Restores selected paths to a chosen path.</string>
+          </property>
           <property name="text">
-           <string>Restore</string>
+           <string>Restore...</string>
           </property>
          </widget>
         </item>
