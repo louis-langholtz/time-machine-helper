@@ -37,19 +37,16 @@ coroutine_task<PlistObject> buildPlist(
 coroutine_task<plist_array> buildPlistArray(
     await_handle<PlistVariant> *awaiting_handle)
 {
-    qInfo() << "buildPlistArray started!";
     auto result = plist_array{};
     while (const auto object = co_await buildPlist(awaiting_handle)) {
         result.push_back(object);
     }
-    qInfo() << "buildPlistArray ending.";
     co_return result;
 }
 
 coroutine_task<plist_dict> buildPlistDict(
     await_handle<PlistVariant> *awaiting_handle)
 {
-    qInfo() << "buildPlistDict started!";
     auto result = plist_dict{};
     for (;;) {
         const auto dict_key = co_await *awaiting_handle;
@@ -61,23 +58,18 @@ coroutine_task<plist_dict> buildPlistDict(
             qWarning() << "hmm... dict key not string?";
             break;
         }
-        qInfo() << "buildPlistDict got key" << *pstring;
         const auto dict_value = co_await buildPlist(awaiting_handle);
-        qInfo() << "buildPlistDict adding map entry for" << *pstring;
         result.emplace(*pstring, dict_value);
     }
-    qInfo() << "buildPlistDict ending.";
     co_return result;
 }
 
 coroutine_task<PlistObject> buildPlist(
     await_handle<PlistVariant> *awaiting_handle)
 {
-    qInfo() << "buildPlist started!";
     auto result = PlistObject{};
     const auto variant = co_await *awaiting_handle;
     const auto element_type = PlistElementType(variant.index());
-    qInfo() << "buildPlist got element type!" << variant.index();
     switch (element_type) {
     case PlistElementType::none:
         break;
@@ -100,9 +92,6 @@ coroutine_task<PlistObject> buildPlist(
     case PlistElementType::plist:
         break;
     }
-    qInfo() << "buildPlist ending:"
-            << "element_type=" << variant.index()
-            << ", result=" << result.value.index();
     co_return result;
 }
 
