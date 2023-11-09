@@ -44,6 +44,14 @@ else()
     endif()
 endif()
 
+set(COPYRIGHT "© 2023 Louis Langholtz")
+
+target_compile_definitions(time-machine-helper PUBLIC
+    VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    COPYRIGHT="${COPYRIGHT}"
+)
+
 target_link_libraries(time-machine-helper PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -56,7 +64,7 @@ set_target_properties(time-machine-helper PROPERTIES
     ${BUNDLE_ID_OPTION}
     OUTPUT_NAME "Time Machine Helper"
     MACOSX_BUNDLE_BUNDLE_NAME "Time Machine Helper"
-    MACOSX_BUNDLE_COPYRIGHT "© 2023 Louis Langholtz"
+    MACOSX_BUNDLE_COPYRIGHT "${COPYRIGHT}"
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE

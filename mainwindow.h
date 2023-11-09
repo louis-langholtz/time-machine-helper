@@ -41,6 +41,7 @@ public slots:
     void restoreSelectedPaths();
     void verifySelectedPaths();
     void selectedPathsChanged();
+    void showAboutDialog();
 
 signals:
     void gotDestinationsPlist(const PlistObject& plist);

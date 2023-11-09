@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>846</width>
+    <width>919</width>
     <height>600</height>
    </rect>
   </property>
@@ -116,7 +116,10 @@
         </attribute>
         <column>
          <property name="text">
-          <string>Mount Point</string>
+          <string>Path</string>
+         </property>
+         <property name="toolTip">
+          <string>Path from mount point shown in destination info.</string>
          </property>
         </column>
         <column>
@@ -201,8 +204,11 @@
       </item>
       <item>
        <widget class="QLabel" name="availableActionsLabel">
+        <property name="toolTip">
+         <string>Path based actions. Note that these actions are only available when one or more paths are selected.</string>
+        </property>
         <property name="text">
-         <string>Available Actions</string>
+         <string>Path Actions</string>
         </property>
        </widget>
       </item>
@@ -249,16 +255,16 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>846</width>
+     <width>919</width>
      <height>24</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuActions">
     <property name="title">
-     <string>Actions</string>
+     <string>File</string>
     </property>
-    <addaction name="actionRestore"/>
-    <addaction name="actionDelete"/>
+    <addaction name="actionAbout"/>
+    <addaction name="actionPreferences"/>
    </widget>
    <addaction name="menuActions"/>
   </widget>
@@ -274,14 +280,19 @@
     <bool>false</bool>
    </attribute>
   </widget>
-  <action name="actionRestore">
+  <action name="actionAbout">
    <property name="text">
-    <string>Restore</string>
+    <string>About</string>
    </property>
   </action>
-  <action name="actionDelete">
+  <action name="actionQuit">
    <property name="text">
-    <string>Delete</string>
+    <string>Quit</string>
+   </property>
+  </action>
+  <action name="actionPreferences">
+   <property name="text">
+    <string>Preferences</string>
    </property>
   </action>
  </widget>

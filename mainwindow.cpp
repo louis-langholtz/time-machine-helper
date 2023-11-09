@@ -370,6 +370,8 @@ MainWindow::MainWindow(QWidget *parent):
 
     this->ui->destinationsWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
 
+    QObject::connect(this->ui->actionAbout, &QAction::triggered,
+                     this, &MainWindow::showAboutDialog);
     QObject::connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
                      this, &MainWindow::updateMountPointsDir);
     QObject::connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
@@ -649,14 +651,7 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
     if (ec) {
         item->setToolTip(0, cantListDirWarning);
         item->setBackground(0, QBrush(QColor(Qt::red)));
-#if 0
-        {
-            // Work around for ShowIndicator not working...
-            const auto hackItem = new QTreeWidgetItem(item, QStringList{""});
-            //hackItem->setHidden(true);
-            item->addChild(hackItem);
-        }
-#endif
+
         QMessageBox msgBox;
         msgBox.setIcon(QMessageBox::Warning);
         msgBox.setTextFormat(Qt::TextFormat::MarkdownText); // doesn't work on macos?
@@ -741,11 +736,6 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
         if (isVolumeLevel) {
             childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
         }
-        else {
-            // Work around for ShowIndicator not working...
-            const auto hackItem = new QTreeWidgetItem(childItem, QStringList{""});
-            childItem->addChild(hackItem);
-        }
     }
     if (countMachineBackups) {
         qDebug() << "count of machine backups is:" << *countMachineBackups;
@@ -810,5 +800,16 @@ void MainWindow::selectedPathsChanged()
     this->ui->deletingPushButton->setDisabled(selectionIsEmpty);
     this->ui->restoringPushButton->setDisabled(selectionIsEmpty);
     this->ui->verifyingPushButton->setDisabled(selectionIsEmpty);
+}
+
+void MainWindow::showAboutDialog()
+{
+    QString text;
+    text.append(QString("%1 %2.%3").arg(this->windowTitle(),
+                                           QString::number(VERSION_MAJOR),
+                                           QString::number(VERSION_MINOR)));
+    text.append("\n\n");
+    text.append(QString("Copyright %1").arg(COPYRIGHT));
+    QMessageBox::about(this, tr("About"), text);
 }
 
