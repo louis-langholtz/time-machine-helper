@@ -27,98 +27,32 @@
 
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include "plist_builder.h"
 
-using plist_dict = std::map<std::string, PlistObject>;
-using plist_array = std::vector<PlistObject>;
-
-coroutine_task<PlistObject> buildPlist(
-    await_handle<PlistVariant> *awaiting_handle);
-
-coroutine_task<plist_array> buildPlistArray(
-    await_handle<PlistVariant> *awaiting_handle)
-{
-    auto result = plist_array{};
-    while (const auto object = co_await buildPlist(awaiting_handle)) {
-        result.push_back(object);
-    }
-    co_return result;
-}
-
-coroutine_task<plist_dict> buildPlistDict(
-    await_handle<PlistVariant> *awaiting_handle)
-{
-    auto result = plist_dict{};
-    for (;;) {
-        const auto dict_key = co_await *awaiting_handle;
-        if (dict_key.index() == 0) {
-            break;
-        }
-        const auto pstring = std::get_if<std::string>(&dict_key);
-        if (!pstring) {
-            qWarning() << "hmm... dict key not string?";
-            break;
-        }
-        const auto dict_value = co_await buildPlist(awaiting_handle);
-        result.emplace(*pstring, dict_value);
-    }
-    co_return result;
-}
-
-coroutine_task<PlistObject> buildPlist(
-    await_handle<PlistVariant> *awaiting_handle)
-{
-    auto result = PlistObject{};
-    const auto variant = co_await *awaiting_handle;
-    const auto element_type = PlistElementType(variant.index());
-    switch (element_type) {
-    case PlistElementType::none:
-        break;
-    case PlistElementType::array:
-    {
-        result.value = co_await buildPlistArray(awaiting_handle);
-        break;
-    }
-    case PlistElementType::dict:
-    {
-        result.value = co_await buildPlistDict(awaiting_handle);
-        break;
-    }
-    case PlistElementType::real:
-    case PlistElementType::integer:
-    case PlistElementType::string:
-    case PlistElementType::key:
-        result.value = variant;
-        break;
-    case PlistElementType::plist:
-        break;
-    }
-    co_return result;
-}
-
-PlistElementType toPlistElementType(const QStringView& string)
+plist_element_type toPlistElementType(const QStringView& string)
 {
     if (string.compare("array") == 0) {
-        return PlistElementType::array;
+        return plist_element_type::array;
     }
     if (string.compare("dict") == 0) {
-        return PlistElementType::dict;
+        return plist_element_type::dict;
     }
     if (string.compare("real") == 0) {
-        return PlistElementType::real;
+        return plist_element_type::real;
     }
     if (string.compare("integer") == 0) {
-        return PlistElementType::integer;
+        return plist_element_type::integer;
     }
     if (string.compare("string") == 0) {
-        return PlistElementType::string;
+        return plist_element_type::string;
     }
     if (string.compare("key") == 0) {
-        return PlistElementType::key;
+        return plist_element_type::key;
     }
     if (string.compare("plist") == 0) {
-        return PlistElementType::plist;
+        return plist_element_type::plist;
     }
-    return PlistElementType::none;
+    return plist_element_type::none;
 }
 
 template <class T>
@@ -131,7 +65,7 @@ std::optional<T> get(const std::map<std::string, T>& map, const std::string& key
 }
 
 template <class T>
-std::optional<T> get(const std::map<std::string, PlistObject>& map, const std::string& key)
+std::optional<T> get(const plist_dict& map, const std::string& key)
 {
     if (const auto it = map.find(key); it != map.end()) {
         if (const auto p = std::get_if<T>(&it->second.value)) {
@@ -172,7 +106,7 @@ tmutil_destination to_tmutil_destination(
 }
 
 std::optional<tmutil_destination> to_tmutil_destination(
-    const PlistObject& object)
+    const plist_object& object)
 {
     if (const auto p = std::get_if<plist_dict>(&object.value)) {
         return to_tmutil_destination(*p);
@@ -193,7 +127,7 @@ std::vector<tmutil_destination> to_tmutil_destinations(
 }
 
 std::vector<tmutil_destination> to_tmutil_destinations(
-    const PlistObject& object)
+    const plist_object& object)
 {
     if (const auto p = std::get_if<plist_dict>(&object.value)) {
         if (const auto it = p->find("Destinations"); it != p->end()) {
@@ -431,21 +365,21 @@ void MainWindow::readMore()
             qInfo() << "start element name:" << reader->name();
             const auto elementType = toPlistElementType(reader->name());
             switch (elementType) {
-            case PlistElementType::none:
+            case plist_element_type::none:
                 break;
-            case PlistElementType::array:
-                this->awaiting_handle.set_awaited_value(std::vector<PlistObject>{});
+            case plist_element_type::array:
+                this->awaiting_handle.set_awaited_value(plist_array{});
                 break;
-            case PlistElementType::dict:
-                this->awaiting_handle.set_awaited_value(std::map<std::string, PlistObject>{});
+            case plist_element_type::dict:
+                this->awaiting_handle.set_awaited_value(plist_dict{});
                 break;
-            case PlistElementType::real:
-            case PlistElementType::integer:
-            case PlistElementType::string:
-            case PlistElementType::key:
+            case plist_element_type::real:
+            case plist_element_type::integer:
+            case plist_element_type::string:
+            case plist_element_type::key:
                 break;
-            case PlistElementType::plist:
-                this->task = buildPlist(&awaiting_handle);
+            case plist_element_type::plist:
+                this->task = plist_builder(&awaiting_handle);
                 break;
             }
             break;
@@ -455,23 +389,23 @@ void MainWindow::readMore()
             qInfo() << "end element name:" << reader->name();
             const auto elementType = toPlistElementType(reader->name());
             switch (elementType) {
-            case PlistElementType::none:
+            case plist_element_type::none:
                 break;
-            case PlistElementType::array:
-            case PlistElementType::dict:
-                this->awaiting_handle.set_awaited_value(PlistVariant{});
+            case plist_element_type::array:
+            case plist_element_type::dict:
+                this->awaiting_handle.set_awaited_value(plist_variant{});
                 break;
-            case PlistElementType::real:
+            case plist_element_type::real:
                 this->awaiting_handle.set_awaited_value(currentText.toDouble());
                 break;
-            case PlistElementType::integer:
+            case plist_element_type::integer:
                 this->awaiting_handle.set_awaited_value(currentText.toInt());
                 break;
-            case PlistElementType::string:
-            case PlistElementType::key:
+            case plist_element_type::string:
+            case plist_element_type::key:
                 this->awaiting_handle.set_awaited_value(currentText.toStdString());
                 break;
-            case PlistElementType::plist:
+            case plist_element_type::plist:
             {
                 const auto plistObject = this->task();
                 qInfo() << "result.value=" << plistObject.value.index();
@@ -530,7 +464,7 @@ void MainWindow::processFinished(int exitCode, int exitStatus)
     }
 }
 
-void MainWindow::updateDestinationsWidget(const PlistObject &plist)
+void MainWindow::updateDestinationsWidget(const plist_object &plist)
 {
     const auto dict = std::get<plist_dict>(plist.value);
     const auto array = get<plist_array>(dict, "Destinations").value();
@@ -743,7 +677,7 @@ void MainWindow::resizeMountPointsColumns()
     this->ui->mountPointsWidget->resizeColumnToContents(6);
 }
 
-void MainWindow::updateBackupStatusWidget(const PlistObject &plist)
+void MainWindow::updateBackupStatusWidget(const plist_object &plist)
 {
     // process plist output from "tmutil status -X"
     qInfo() << "updateBackupStatusWidget called!";
@@ -799,6 +733,12 @@ void MainWindow::showAboutDialog()
                                            QString::number(VERSION_MINOR)));
     text.append("\n\n");
     text.append(QString("Copyright %1").arg(COPYRIGHT));
+    text.append("\n\n");
+    text.append(QString("Source code available at:\n%1")
+                    .arg("https://github.com/louis-langholtz/time-machine-helper"));
+    text.append("\n\n");
+    text.append(QString("Compiled with Qt version %1.\nRunning with Qt version %2.")
+                    .arg(QT_VERSION_STR, qVersion()));
     QMessageBox::about(this, tr("About"), text);
 }
 
