@@ -9,6 +9,7 @@ template <class TaskType, class ReturnType>
 struct returning_promise {
     ReturnType value_to_return;
     std::coroutine_handle<> previous;
+    std::exception_ptr exception;
 
     using promise_type = typename TaskType::promise_type;
 
@@ -49,8 +50,9 @@ struct returning_promise {
         return {};
     }
 
+    // Uses code from https://en.cppreference.com/w/cpp/language/coroutines
     void unhandled_exception() {
-        std::terminate();
+        exception = std::current_exception();;
     }
 
     template<std::convertible_to<ReturnType> From>
@@ -145,6 +147,9 @@ public:
     auto operator()() -> ReturnType
     {
         if (h_) {
+            if (h_.promise().exception) {
+                std::rethrow_exception(h_.promise().exception);
+            }
             return std::exchange(h_.promise().value_to_return, {});
         }
         return {};
