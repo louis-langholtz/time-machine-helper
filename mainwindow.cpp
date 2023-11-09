@@ -708,6 +708,7 @@ void MainWindow::deleteSelectedPaths()
     dialog->setWindowTitle("Confirm Deletion");
     dialog->setText("Are you sure that you want to delete the following paths?");
     dialog->setPaths(selectedPaths);
+    dialog->setAction(tmutilDeleteVerb);
     dialog->show();
 
     // Output from sudo tmutil delete -p backup1-path -p backup2-path

@@ -7,6 +7,8 @@
 class QTextEdit;
 class QLabel;
 class QPushButton;
+class QProcess;
+class QStatusBar;
 
 class PathActionDialog : public QDialog
 {
@@ -16,9 +18,18 @@ public:
 
     QString text() const;
     QStringList paths() const;
+    QString action() const;
 
     void setText(const QString& text);
     void setPaths(const QStringList& paths);
+    void setAction(const QString& action);
+
+public slots:
+    void startAction();
+    void readProcessOuput();
+    void readProcessError();
+    void setProcessStarted();
+    void setProcessFinished(int code, int status);
 
 signals:
 
@@ -28,8 +39,12 @@ private:
     QPushButton* yesButton{};
     QPushButton* noButton{};
     QTextEdit* outputWidget{};
+    QProcess* process{};
+    QStatusBar* statusBar{};
 
     QStringList pathList;
+    QString verb;
+    bool withAdmin{};
 };
 
 #endif // PATHACTIONDIALOG_H
