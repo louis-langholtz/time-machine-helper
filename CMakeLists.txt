@@ -26,6 +26,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         plist_object.h
         coroutine.h
         plist_builder.h plist_builder.cpp
+        pathactiondialog.h pathactiondialog.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET time-machine-helper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR

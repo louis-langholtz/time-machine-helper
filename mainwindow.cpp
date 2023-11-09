@@ -28,6 +28,7 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include "plist_builder.h"
+#include "pathactiondialog.h"
 
 plist_element_type toPlistElementType(const QStringView& string)
 {
@@ -702,6 +703,23 @@ void MainWindow::deleteSelectedPaths()
 {
     const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
     qInfo() << "deleteSelectedPaths called for" << selectedPaths;
+
+    const auto dialog = new PathActionDialog(this);
+    dialog->setWindowTitle("Confirm Deletion");
+    dialog->setText("Are you sure that you want to delete the following paths?");
+    dialog->setPaths(selectedPaths);
+    dialog->show();
+
+    // Output from sudo tmutil delete -p backup1-path -p backup2-path
+    // looks like:
+    // Deleting: /Volumes/disk/Backups.backupdb/machine/backup1
+    // Deleted (2.3G): /Volumes/disk/Backups.backupdb/machine/backup1
+    // Deleting: /Volumes/disk/Backups.backupdb/machine/backup2
+    // Deleted (1.2G): /Volumes/disk/Backups.backupdb/machine/backup2
+    // Total deleted: 3.78 GB
+    // May need to use something like osascript to authorize tmutil
+    // osascript -e 'do shell script "tmutil delete -p path1 -p path2" with prompt "Time Machine Helper is trying to run a tmutil administrative command" with administrator privileges'
+    // osascript -e 'do shell script "echo hello bin two" with prompt "Time Machine Helper is trying to run a tmutil administrative command" with administrator privileges'
 }
 
 void MainWindow::restoreSelectedPaths()
