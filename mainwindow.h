@@ -2,9 +2,15 @@
 #define MAINWINDOW_H
 
 #include <filesystem>
+#include <map>
 #include <vector>
 
+#include <QFont>
 #include <QMainWindow>
+#include <QMap>
+#include <QPair>
+#include <QString>
+#include <QVariant>
 
 #include "coroutine.h"
 #include "plist_object.h"
@@ -42,6 +48,12 @@ public slots:
     void verifySelectedPaths();
     void selectedPathsChanged();
     void showAboutDialog();
+    void reportDir(QTreeWidgetItem *item,
+                   const QMap<int, QString>& textMap,
+                   int error);
+    void addDirEntry(QTreeWidgetItem *item,
+                     const QMap<int, QString>& textMap,
+                     const QMap<int, QPair<int, QVariant>>& dataMap);
 
 signals:
     void gotDestinationsPlist(const plist_object& plist);
@@ -57,6 +69,7 @@ private:
     std::vector<std::map<std::string, plist_object>> destinations;
     QString tmUtilPath;
     QFileSystemWatcher *fileSystemWatcher{};
+    QFont pathFont{"Courier"};
 };
 
 plist_element_type toPlistElementType(

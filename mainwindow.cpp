@@ -1,11 +1,8 @@
-#include <sys/xattr.h> // for listxattr system calls
-
 #include <algorithm> // std::find_if_not
 #include <coroutine>
 #include <optional>
 #include <utility>
 #include <string>
-#include <sstream>
 #include <vector>
 #include <iterator>
 
@@ -24,7 +21,9 @@
 #include <QFont>
 #include <QHeaderView>
 #include <QPushButton>
+#include <QThread>
 
+#include "directoryreader.h"
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include "plist_builder.h"
@@ -54,15 +53,6 @@ plist_element_type toPlistElementType(const QStringView& string)
         return plist_element_type::plist;
     }
     return plist_element_type::none;
-}
-
-template <class T>
-std::optional<T> get(const std::map<std::string, T>& map, const std::string& key)
-{
-    if (const auto it = map.find(key); it != map.end()) {
-        return {it->second};
-    }
-    return {};
 }
 
 template <class T>
@@ -157,100 +147,6 @@ static constexpr auto tmutilDeleteVerb   = "delete";
 static constexpr auto tmutilStatusVerb   = "status";
 static constexpr auto tmutilXmlOption    = "-X";
 
-static constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
-
-static constexpr auto backupAttrPrefix = "com.apple.backup.";
-
-static constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
-static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
-static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
-static constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
-static constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
-static constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
-static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
-static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
-static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
-
-// From https://stackoverflow.com/a/236803/7410358
-template <typename Out>
-void split(const std::string &s, char delim, Out result) {
-    std::istringstream iss(s);
-    std::string item;
-    while (std::getline(iss, item, delim)) {
-        *result++ = item;
-    }
-}
-
-// From https://stackoverflow.com/a/236803/7410358
-std::vector<std::string> split(const std::string &s, char delim) {
-    std::vector<std::string> elems;
-    split(s, delim, std::back_inserter(elems));
-    return elems;
-}
-
-std::map<std::string, std::vector<char>> getInterestingAttrs(
-    const std::filesystem::path& path,
-    bool &hasTimeMachineAttrs)
-{
-    auto attrs = std::map<std::string, std::vector<char>>{};
-    const auto size = listxattr(path.c_str(), nullptr, 0, 0);
-    if (size < 0) {
-        qWarning() << "unable to get size for listing attrs for:" << path.c_str();
-        return {};
-    }
-    if (size == 0) {
-        qDebug() << "no attrs for" << path.c_str();
-        return {};
-    }
-    auto nameBuffer = std::string{};
-    nameBuffer.resize(size + 1u);
-    const auto result = listxattr(path.c_str(), nameBuffer.data(), size, 0);
-    if (result < 0) {
-        qWarning() << "unable to list attrs for:" << path.c_str();
-        return {};
-    }
-    const auto xattrNames = split(nameBuffer, '\0');
-    for (const auto& attrName: xattrNames) {
-        do {
-            if (attrName.starts_with(timeMachineAttrPrefix)) {
-                hasTimeMachineAttrs = true;
-                break;
-            }
-            if (attrName.starts_with(backupAttrPrefix)) {
-                break;
-            }
-            if (attrName.starts_with(backupdAttrPrefix)) {
-                break;
-            }
-            continue;
-        } while (false);
-        const auto reserveSize = getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
-        if (reserveSize < 0) {
-            continue;
-        }
-        auto buffer = std::vector<char>(std::size_t(reserveSize) + 1u);
-        const auto actualSize = getxattr(path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
-        if (actualSize < 0) {
-            continue;
-        }
-        attrs.emplace(attrName, buffer);
-    }
-    return attrs;
-}
-
-std::string toString(const std::vector<char>& value)
-{
-    const auto first = value.rbegin();
-    const auto last = value.rend();
-    const auto it = std::find_if(first, last, [](char c){
-        return c != '\0';
-    });
-    const auto diff = (it != last)
-                          ? (&(*it) - value.data()) + 1
-                          : std::ptrdiff_t(value.size());
-    return std::string(value.data(), value.data() + diff);
-}
-
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
     ui(new Ui::MainWindow),
@@ -277,7 +173,8 @@ MainWindow::MainWindow(QWidget *parent):
     const auto tmUtilPath = settings.value(tmutilSettingsKey);
     const auto tmutil_file_info = QFileInfo(tmUtilPath.toString());
     if (tmutil_file_info.isExecutable()) {
-        qInfo() << "Executable absolute path is:" << tmutil_file_info.absoluteFilePath();
+        qInfo() << "Executable absolute path is:"
+                << tmutil_file_info.absoluteFilePath();
         this->tmUtilPath = tmUtilPath.toString();
     }
     else if (tmutil_file_info.exists()) {
@@ -288,7 +185,8 @@ MainWindow::MainWindow(QWidget *parent):
     }
     else {
         QMessageBox::critical(this, "Error!",
-                              QString("'%1' file not found!").arg(tmutil_file_info.absoluteFilePath()));
+                              QString("'%1' file not found!")
+                                  .arg(tmutil_file_info.absoluteFilePath()));
         qWarning() << "tmutil file not found!";
     }
 
@@ -530,142 +428,112 @@ void MainWindow::updateMountPointsView(const std::vector<std::filesystem::path>&
         const auto si = space(mp);
         const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
         const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
-        const auto mpItem = new QTreeWidgetItem(QStringList{mp.c_str()}, QTreeWidgetItem::UserType);
-        mpItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
-        mpItem->setFont(0, font);
-        mpItem->setWhatsThis(0, QString("This is the file system info for '%1'").arg(mp.c_str()));
-        mpItem->setData(0, Qt::ItemDataRole::UserRole, QString(mp.c_str()));
-        mpItem->setText(1, QString::number(capacityInGb, 'f', 2));
-        mpItem->setTextAlignment(1, Qt::AlignRight);
-        mpItem->setToolTip(1, QString("Capacity of this filesystem (%1 bytes).").arg(si.capacity));
-        mpItem->setText(2, QString::number(freeInGb, 'f', 2));
-        mpItem->setTextAlignment(2, Qt::AlignRight);
-        mpItem->setToolTip(2, QString("Free space of this filesystem (%1 bytes).").arg(si.free));
-        this->ui->mountPointsWidget->addTopLevelItem(mpItem);
-        this->fileSystemWatcher->addPath(mp.c_str());
+        const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
+        item->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
+        item->setText(0, mp.c_str());
+        item->setData(0, Qt::ItemDataRole::UserRole, QString(mp.c_str()));
+        item->setFont(0, font);
+        item->setWhatsThis(0, QString("This is the file system info for '%1'").arg(mp.c_str()));
+        item->setText(1, QString::number(capacityInGb, 'f', 2));
+        item->setTextAlignment(1, Qt::AlignRight);
+        item->setToolTip(1, QString("Capacity of this filesystem (%1 bytes).").arg(si.capacity));
+        item->setText(2, QString::number(freeInGb, 'f', 2));
+        item->setTextAlignment(2, Qt::AlignRight);
+        item->setToolTip(2, QString("Free space of this filesystem (%1 bytes).").arg(si.free));
+        this->ui->mountPointsWidget->addTopLevelItem(item);
     }
     this->ui->mountPointsWidget->resizeColumnToContents(0);
 }
 
+void MainWindow::reportDir(QTreeWidgetItem *item,
+                           const QMap<int, QString>& textMap,
+                           int error)
+{
+    const QString pathName = item->data(0, Qt::ItemDataRole::UserRole).toString();
+    if (error == 0) {
+        this->fileSystemWatcher->addPath(pathName);
+        for (const auto& entry: textMap.toStdMap()) {
+            item->setText(entry.first, entry.second);
+        }
+        return;
+    }
+
+    item->setToolTip(0, cantListDirWarning);
+    item->setBackground(0, QBrush(QColor(Qt::red)));
+
+    const auto ec = std::make_error_code(std::errc(error));
+
+    QMessageBox msgBox;
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setTextFormat(Qt::TextFormat::MarkdownText); // doesn't work on macos?
+    msgBox.setWindowTitle("Error!");
+    msgBox.setText(QString("Unable to list contents of directory `%1`")
+                       .arg(pathName));
+    msgBox.setDetailedText(QString("Reason: %2")
+                               .arg(QString::fromStdString(ec.message())));
+    if (ec == std::make_error_code(std::errc::operation_not_permitted)) {
+        const auto appPath = QCoreApplication::applicationFilePath();
+        const auto fileName = std::filesystem::path(appPath.toStdString()).filename();
+        auto infoText = QString("Is macOS *%1* perhaps not enabled for '%2'?")
+                            .arg(fullDiskAccessStr, fileName.c_str());
+        infoText.append(QString("\nTo check, choose Apple menu  > %1 > %2 > %3")
+                            .arg(systemSettingsStr, privacySecurityStr, fullDiskAccessStr));
+        msgBox.setInformativeText(infoText);
+        // perhaps also run: open "x-apple.systempreferences:com.apple.preference.security"
+    }
+    msgBox.exec();
+}
+
+void MainWindow::addDirEntry(QTreeWidgetItem *item,
+                             const QMap<int, QString> &textMap,
+                             const QMap<int, QPair<int, QVariant> > &dataMap)
+{
+    const auto childItem = new QTreeWidgetItem(item);
+
+    // Following may not work. For more info, see:
+    // https://stackoverflow.com/q/30088705/7410358
+    // https://bugreports.qt.io/browse/QTBUG-28312
+    childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
+
+    childItem->setTextAlignment(3, Qt::AlignRight);
+    childItem->setTextAlignment(4, Qt::AlignRight);
+    childItem->setTextAlignment(5, Qt::AlignRight);
+    childItem->setTextAlignment(6, Qt::AlignCenter);
+    childItem->setTextAlignment(7, Qt::AlignRight);
+
+    childItem->setFont(0, this->pathFont);
+    auto isVolumeLevel = false;
+    for (const auto& entry: textMap.toStdMap()) {
+        childItem->setText(entry.first, entry.second);
+        switch (entry.first) {
+        case 6:
+        case 7:
+            isVolumeLevel = true;
+            break;
+        }
+    }
+    for (const auto& entry: dataMap.toStdMap()) {
+        childItem->setData(entry.first, entry.second.first, entry.second.second);
+    }
+    if (isVolumeLevel) {
+        childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
+    }
+    item->addChild(childItem);
+}
+
 void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
 {
-    const auto fullPathName = item->data(0, Qt::ItemDataRole::UserRole).toString();
     qDebug() << "got mount point expanded signal"
-             << "for item:" << item->text(0)
-             << "with data:" << fullPathName;
+             << "for item:" << item->text(0);
     for (const auto* child: item->takeChildren()) {
         delete child;
     }
 
-    std::error_code ec;
-    using std::filesystem::directory_iterator;
-    using std::filesystem::directory_options;
-    const auto directory = std::filesystem::path(fullPathName.toStdString());
-    auto ignore = false;
-    const auto dirAttrs = getInterestingAttrs(directory, ignore);
-    auto countMachineBackups = std::optional<std::size_t>{};
-    if (const auto value = get<std::vector<char>>(dirAttrs, machineUuidAttr)) {
-        qDebug() << "host UUID:"
-                 << QString::fromStdString(toString(*value));
-        countMachineBackups = {0};
-    }
-    const auto it = directory_iterator{directory,
-                                       directory_options::skip_permission_denied,
-                                       ec};
-    if (ec) {
-        item->setToolTip(0, cantListDirWarning);
-        item->setBackground(0, QBrush(QColor(Qt::red)));
-
-        QMessageBox msgBox;
-        msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setTextFormat(Qt::TextFormat::MarkdownText); // doesn't work on macos?
-        msgBox.setWindowTitle("Error!");
-        msgBox.setText(QString("Unable to list contents of directory `%1`")
-                           .arg(directory.c_str()));
-        msgBox.setDetailedText(QString("Reason: %2")
-                                   .arg(QString::fromStdString(ec.message())));
-        if (ec == std::make_error_code(std::errc::operation_not_permitted)) {
-            const auto appPath = QCoreApplication::applicationFilePath();
-            const auto fileName = std::filesystem::path(appPath.toStdString()).filename();
-            auto infoText = QString("Is macOS *%1* perhaps not enabled for '%2'?")
-                                .arg(fullDiskAccessStr, fileName.c_str());
-            infoText.append(QString("\nTo check, choose Apple menu  > %1 > %2 > %3")
-                                .arg(systemSettingsStr, privacySecurityStr, fullDiskAccessStr));
-            msgBox.setInformativeText(infoText);
-            // perhaps also run: open "x-apple.systempreferences:com.apple.preference.security"
-        }
-        msgBox.exec();
-
-        return;
-    }
-
-    auto font = QFont("Courier");
-    this->fileSystemWatcher->addPath(directory.c_str());
-    for (const auto& subdirectoryIt: it) {
-        const auto path = subdirectoryIt.path();
-        const auto filename = path.filename().string();
-        if (filename.compare(".") == 0 || filename.compare("..") == 0) {
-            continue;
-        }
-        auto hasTimeMachinceAttrs = false;
-        const auto subdirAttrs = getInterestingAttrs(path, hasTimeMachinceAttrs);
-        if (!hasTimeMachinceAttrs) {
-            continue;
-        }
-        qDebug() << "adding item" << filename.c_str();
-        const auto childItem = new QTreeWidgetItem(item, QStringList{filename.c_str()});
-        // Following may not work. For more info, see:
-        // https://stackoverflow.com/q/30088705/7410358
-        // https://bugreports.qt.io/browse/QTBUG-28312
-        childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
-        childItem->setFont(0, font);
-        childItem->setData(0, Qt::ItemDataRole::UserRole, QString(path.c_str()));
-        item->addChild(childItem);
-        if (const auto value = get<std::vector<char>>(subdirAttrs, machineCompNameAttr)) {
-            qDebug() << "computer name:"
-                     << QString::fromStdString(toString(*value));
-        }
-        if (const auto value = get<std::vector<char>>(subdirAttrs, snapshotTypeAttr)) {
-            childItem->setText(4, QString::fromStdString(toString(*value)));
-            childItem->setTextAlignment(4, Qt::AlignRight);
-        }
-        if (const auto value = get<std::vector<char>>(subdirAttrs, totalBytesCopiedAttr)) {
-            const auto totalBytesCopiedAsString = QString::fromStdString(toString(*value));
-            qDebug() << "bytesCopiedAttr:" << totalBytesCopiedAsString;
-            auto okay = false;
-            const auto bytes = totalBytesCopiedAsString.toLongLong(&okay);
-            if (okay) {
-                const auto megaBytes = double(bytes) / (1000 * 1000);
-                childItem->setText(5, QString::number(megaBytes, 'f', 2));
-                childItem->setTextAlignment(5, Qt::AlignRight);
-            }
-        }
-        auto isVolumeLevel = false;
-        if (const auto value = get<std::vector<char>>(subdirAttrs, fileSystemTypeAttr)) {
-            childItem->setText(6, QString::fromStdString(toString(*value)));
-            childItem->setTextAlignment(6, Qt::AlignCenter);
-            isVolumeLevel = true;
-        }
-        if (const auto value = get<std::vector<char>>(subdirAttrs, volumeBytesUsedAttr)) {
-            childItem->setText(7, QString::fromStdString(toString(*value)));
-            childItem->setTextAlignment(7, Qt::AlignRight);
-            isVolumeLevel = true;
-        }
-        if (!is_directory(path)) {
-            continue;
-        }
-        if (countMachineBackups) {
-            countMachineBackups = {*countMachineBackups + 1u};
-        }
-        if (isVolumeLevel) {
-            childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
-        }
-    }
-    if (countMachineBackups) {
-        qDebug() << "count of machine backups is:" << *countMachineBackups;
-        item->setText(3, QString::number(*countMachineBackups));
-        item->setTextAlignment(3, Qt::AlignRight);
-    }
+    DirectoryReader *workerThread = new DirectoryReader(item, this);
+    connect(workerThread, &DirectoryReader::ended, this, &MainWindow::reportDir);
+    connect(workerThread, &DirectoryReader::entry, this, &MainWindow::addDirEntry);
+    connect(workerThread, &DirectoryReader::finished, workerThread, &QObject::deleteLater);
+    workerThread->start();
 }
 
 void MainWindow::resizeMountPointsColumns()
