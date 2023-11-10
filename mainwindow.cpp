@@ -686,7 +686,7 @@ void MainWindow::updateBackupStatusWidget(const plist_object &plist)
 
 void MainWindow::updateMountPointsDir(const QString &path)
 {
-    qInfo() << "updateMountPointsDir called!";
+    qInfo() << "updateMountPointsDir called for path:" << path;
 }
 
 QStringList toStringList(const QList<QTreeWidgetItem*>& items)
@@ -701,14 +701,16 @@ QStringList toStringList(const QList<QTreeWidgetItem*>& items)
 
 void MainWindow::deleteSelectedPaths()
 {
-    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    const auto selectedPaths = toStringList(
+        this->ui->mountPointsWidget->selectedItems());
     qInfo() << "deleteSelectedPaths called for" << selectedPaths;
 
     const auto dialog = new PathActionDialog(this);
-    dialog->setWindowTitle("Confirm Deletion");
+    dialog->setWindowTitle("Deletion Dialog");
     dialog->setText("Are you sure that you want to delete the following paths?");
     dialog->setPaths(selectedPaths);
     dialog->setAction(tmutilDeleteVerb);
+    dialog->setAsRoot(true);
     dialog->show();
 
     // Output from sudo tmutil delete -p backup1-path -p backup2-path

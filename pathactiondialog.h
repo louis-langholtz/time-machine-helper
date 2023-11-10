@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QStringList>
+#include <QProcessEnvironment>
 
 class QTextEdit;
 class QLabel;
@@ -19,10 +20,17 @@ public:
     QString text() const;
     QStringList paths() const;
     QString action() const;
+    bool asRoot() const;
+    QProcessEnvironment environment() const;
+    QString tmutilPath() const;
 
     void setText(const QString& text);
     void setPaths(const QStringList& paths);
     void setAction(const QString& action);
+    void setAsRoot(bool asRoot);
+    void setEnvironment(
+        const QProcessEnvironment& environment);
+    void setTmutilPath(const QString& path);
 
 public slots:
     void startAction();
@@ -30,6 +38,7 @@ public slots:
     void readProcessError();
     void setProcessStarted();
     void setProcessFinished(int code, int status);
+    void setErrorOccurred(int error);
 
 signals:
 
@@ -41,10 +50,12 @@ private:
     QTextEdit* outputWidget{};
     QProcess* process{};
     QStatusBar* statusBar{};
-
+    QProcessEnvironment env;
     QStringList pathList;
+    QString tmuPath{"tmutil"};
     QString verb;
     bool withAdmin{};
+    bool askPass{};
 };
 
 #endif // PATHACTIONDIALOG_H

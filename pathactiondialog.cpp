@@ -27,7 +27,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     yesButton{new QPushButton{"Yes", this}},
     noButton{new QPushButton{"No", this}},
     outputWidget{new QTextEdit{this}},
-    statusBar{new QStatusBar{this}}
+    statusBar{new QStatusBar{this}},
+    env{QProcessEnvironment::InheritFromParent}
 {
     this->setWindowTitle(tr("Path Action Dialog"));
 
@@ -47,8 +48,11 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 
     this->outputWidget->setObjectName("outputWidget");
     this->outputWidget->setEnabled(false);
+    this->outputWidget->setReadOnly(true);
 
-    setLayout([this](){
+    this->statusBar->showMessage("Awaiting confirmation of action.");
+
+    this->setLayout([this](){
         auto *mainLayout = new QVBoxLayout;
         mainLayout->setObjectName("mainLayout");
         mainLayout->addWidget(this->textLabel);
@@ -85,6 +89,16 @@ QString PathActionDialog::action() const
     return this->verb;
 }
 
+bool PathActionDialog::asRoot() const
+{
+    return this->withAdmin;
+}
+
+QProcessEnvironment PathActionDialog::environment() const
+{
+    return this->env;
+}
+
 void PathActionDialog::setText(const QString &text)
 {
     this->textLabel->setText(text);
@@ -111,18 +125,41 @@ void PathActionDialog::setAction(const QString &action)
     }
 }
 
+void PathActionDialog::setAsRoot(bool asRoot)
+{
+    this->withAdmin = asRoot;
+}
+
+void PathActionDialog::setEnvironment(
+    const QProcessEnvironment &environment)
+{
+    this->env = environment;
+}
+
 void PathActionDialog::startAction()
 {
     this->yesButton->setEnabled(false);
     this->noButton->setEnabled(false);
     this->outputWidget->setEnabled(true);
 
+    const auto program = QString((this->withAdmin)? "sudo": this->tmuPath);
+
     auto argList = QStringList();
+    if (this->withAdmin) {
+        if (this->askPass) {
+            argList << "--askpass";
+        }
+        argList << this->tmuPath;
+    }
     argList << this->verb;
     for (const auto& path: pathList) {
         argList << "-p" << path;
     }
+    qInfo() << "About to run:" << program << argList.join(' ');
+
     this->process = new QProcess(this);
+    connect(this->process, &QProcess::errorOccurred,
+            this, &PathActionDialog::setErrorOccurred);
     connect(this->process, &QProcess::started,
             this, &PathActionDialog::setProcessStarted);
     connect(this->process, &QProcess::finished,
@@ -132,30 +169,52 @@ void PathActionDialog::startAction()
     connect(this->process, &QProcess::readyReadStandardError,
             this, &PathActionDialog::readProcessError);
     this->statusBar->showMessage("Starting process");
-    this->process->start("tmutil", argList, QIODeviceBase::ReadOnly);
+    this->process->setProcessEnvironment(this->env);
+    this->process->start(program, argList, QIODeviceBase::ReadOnly);
 }
 
 void PathActionDialog::readProcessOuput()
 {
     const auto data = this->process->readAllStandardOutput();
-    this->outputWidget->append(QString(data));
+    if (!data.isEmpty()) {
+        this->outputWidget->append(
+            QString("<small><tt>%1</tt><br/></small>").arg(data));
+    }
 }
 
 void PathActionDialog::readProcessError()
 {
     const auto data = this->process->readAllStandardError();
-    this->outputWidget->append(QString(data));
+    if (!data.isEmpty()) {
+        this->outputWidget->append(
+            QString("<font color='red'><small><tt>%1</tt></small></font><br/>").arg(data));
+    }
 }
 
 void PathActionDialog::setProcessStarted()
 {
     qInfo() << "process started";
     this->statusBar->showMessage("Process started.");
+    this->readProcessOuput();
+    this->readProcessError();
 }
 
 void PathActionDialog::setProcessFinished(int code, int status)
 {
-    qInfo() << "process finished";
-    this->outputWidget->setEnabled(false);
-    this->statusBar->showMessage("Process finished.");
+    this->readProcessOuput();
+    this->readProcessError();
+    switch (code) {
+    case EXIT_SUCCESS:
+        this->statusBar->showMessage("Process succeeded.");
+        break;
+    default:
+        this->statusBar->showMessage(
+            QString("Process failed (exit code %1).").arg(code));
+        break;
+    }
+}
+
+void PathActionDialog::setErrorOccurred(int error)
+{
+    this->statusBar->showMessage(QString("Process error occurred (%1).").arg(error));
 }
