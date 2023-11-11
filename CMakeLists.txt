@@ -28,6 +28,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         plist_builder.h plist_builder.cpp
         pathactiondialog.h pathactiondialog.cpp
         directoryreader.h directoryreader.cpp
+        destinationswidget.h destinationswidget.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET time-machine-helper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -48,6 +49,9 @@ else()
 endif()
 
 set(COPYRIGHT "© 2023 Louis Langholtz")
+
+target_include_directories(time-machine-helper PUBLIC
+    ${PROJECT_SOURCE_DIR})
 
 target_compile_definitions(time-machine-helper PUBLIC
     VERSION_MAJOR=${PROJECT_VERSION_MAJOR}

@@ -8,52 +8,25 @@
 
 #include <QtDebug>
 #include <QObject>
-#include <QProcess>
 #include <QTreeWidgetItem>
 #include <QMessageBox>
 #include <QSettings>
 #include <QFileInfo>
 #include <QStringView>
 #include <QFileSystemModel>
-#include <QConcatenateTablesProxyModel>
-#include <QXmlStreamReader>
 #include <QFileSystemWatcher>
 #include <QFont>
 #include <QHeaderView>
 #include <QPushButton>
-#include <QThread>
+#include <QTimer>
+#include <QFontDatabase>
 
+#include "ui_mainwindow.h"
 #include "directoryreader.h"
 #include "mainwindow.h"
-#include "./ui_mainwindow.h"
-#include "plist_builder.h"
 #include "pathactiondialog.h"
 
-plist_element_type toPlistElementType(const QStringView& string)
-{
-    if (string.compare("array") == 0) {
-        return plist_element_type::array;
-    }
-    if (string.compare("dict") == 0) {
-        return plist_element_type::dict;
-    }
-    if (string.compare("real") == 0) {
-        return plist_element_type::real;
-    }
-    if (string.compare("integer") == 0) {
-        return plist_element_type::integer;
-    }
-    if (string.compare("string") == 0) {
-        return plist_element_type::string;
-    }
-    if (string.compare("key") == 0) {
-        return plist_element_type::key;
-    }
-    if (string.compare("plist") == 0) {
-        return plist_element_type::plist;
-    }
-    return plist_element_type::none;
-}
+namespace {
 
 template <class T>
 std::optional<T> get(const plist_dict& map, const std::string& key)
@@ -135,6 +108,16 @@ std::vector<tmutil_destination> to_tmutil_destinations(
     return {};
 }
 
+QStringList toStringList(const QList<QTreeWidgetItem*>& items)
+{
+    QStringList result;
+    for (const auto* item: items) {
+        const auto string = item->data(0, Qt::ItemDataRole::UserRole).toString();
+        result += string;
+    }
+    return result;
+}
+
 static constexpr auto tmutilSettingsKey = "tmutil_path";
 static constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
 static constexpr auto fullDiskAccessStr = "Full Disk Access";
@@ -142,16 +125,19 @@ static constexpr auto systemSettingsStr = "System Settings";
 static constexpr auto privacySecurityStr = "Privacy & Security";
 static constexpr auto cantListDirWarning = "Warning: unable to list contents of this directory!";
 
-static constexpr auto tmutilDestInfoVerb = "destinationinfo";
 static constexpr auto tmutilDeleteVerb   = "delete";
 static constexpr auto tmutilStatusVerb   = "status";
-static constexpr auto tmutilXmlOption    = "-X";
+
+}
 
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
     ui(new Ui::MainWindow),
+    timer(new QTimer(this)),
     fileSystemWatcher(new QFileSystemWatcher(this))
 {
+    this->pathFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+
     this->ui->setupUi(this);
 
     this->ui->deletingPushButton->setDisabled(true);
@@ -190,256 +176,66 @@ MainWindow::MainWindow(QWidget *parent):
         qWarning() << "tmutil file not found!";
     }
 
-    this->ui->destinationsWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
+    this->ui->destinationsWidget->horizontalHeader()
+        ->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
 
-    QObject::connect(this->ui->actionAbout, &QAction::triggered,
-                     this, &MainWindow::showAboutDialog);
-    QObject::connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
-                     this, &MainWindow::updateMountPointsDir);
-    QObject::connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
-                     this, &MainWindow::selectedPathsChanged);
-    QObject::connect(this->ui->deletingPushButton, &QPushButton::pressed,
-                     this, &MainWindow::deleteSelectedPaths);
-    QObject::connect(this->ui->restoringPushButton, &QPushButton::pressed,
-                     this, &MainWindow::restoreSelectedPaths);
-    QObject::connect(this->ui->verifyingPushButton, &QPushButton::pressed,
-                     this, &MainWindow::verifySelectedPaths);
+    connect(this->ui->actionAbout, &QAction::triggered,
+            this, &MainWindow::showAboutDialog);
+    connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
+            this, &MainWindow::updateMountPointsDir);
+    connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
+            this, &MainWindow::selectedPathsChanged);
+    connect(this->ui->deletingPushButton, &QPushButton::pressed,
+            this, &MainWindow::deleteSelectedPaths);
+    connect(this->ui->restoringPushButton, &QPushButton::pressed,
+            this, &MainWindow::restoreSelectedPaths);
+    connect(this->ui->verifyingPushButton, &QPushButton::pressed,
+            this, &MainWindow::verifySelectedPaths);
+    connect(this->timer, &QTimer::timeout,
+            this, &MainWindow::checkTmStatus);
+    connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
+            this, &MainWindow::updateMountPointsView);
+    connect(this->ui->mountPointsWidget, &QTreeWidget::itemExpanded,
+            this, &MainWindow::mountPointItemExpanded);
+    connect(this->ui->destinationsWidget, &DestinationsWidget::gotStatus,
+            this, &MainWindow::showStatus);
 
-    readDestinationInfo();
+    this->timer->start(1000);
+
+    this->ui->destinationsWidget->queryDestinations();
 }
 
 MainWindow::~MainWindow()
 {
-    delete this->process;
     delete this->ui;
 }
 
-void MainWindow::readDestinationInfo()
+void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
 {
-    if (this->process && this->process->state() != QProcess::ProcessState::NotRunning) {
-        QMessageBox msgBox;
-        msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setText("Cannot read destination info.");
-        msgBox.setInformativeText("Must wait till prior read has ended.");
-        msgBox.exec();
-        return;
-    }
-    delete this->process;
-    this->process = new QProcess(this);
-    this->reader = new QXmlStreamReader(this->process);
-    QObject::connect(this, &MainWindow::gotDestinationsPlist,
-                     this, &MainWindow::updateDestinationsWidget);
-    QObject::connect(this, &MainWindow::gotMountPoints,
-                     this, &MainWindow::updateMountPointsView);
-    QObject::connect(this->ui->mountPointsWidget, &QTreeWidget::itemExpanded,
-                     this, &MainWindow::mountPointItemExpanded);
-    QObject::connect(this->process, &QIODevice::readyRead,
-                     this, &MainWindow::readMore);
-    QObject::connect(this->process, &QProcess::finished,
-                     this, &MainWindow::processFinished);
-    this->process->start(this->tmUtilPath,
-                         QStringList() << tmutilDestInfoVerb << tmutilXmlOption,
-                         QIODeviceBase::ReadOnly);
-}
-
-void MainWindow::readMore()
-{
-    qDebug() << "readMore called";
-    while (!reader->atEnd()) {
-        const auto tokenType = reader->readNext();
-        switch (tokenType) {
-        case QXmlStreamReader::NoToken:
-            break;
-        case QXmlStreamReader::Invalid:
-            qWarning() << "invalid token type!";
-            break;
-        case QXmlStreamReader::StartDocument:
-            qInfo() << "start document";
-            break;
-        case QXmlStreamReader::EndDocument:
-            qInfo() << "end document";
-            break;
-        case QXmlStreamReader::StartElement:
-        {
-            qInfo() << "start element name:" << reader->name();
-            const auto elementType = toPlistElementType(reader->name());
-            switch (elementType) {
-            case plist_element_type::none:
-                break;
-            case plist_element_type::array:
-                this->awaiting_handle.set_awaited_value(plist_array{});
-                break;
-            case plist_element_type::dict:
-                this->awaiting_handle.set_awaited_value(plist_dict{});
-                break;
-            case plist_element_type::real:
-            case plist_element_type::integer:
-            case plist_element_type::string:
-            case plist_element_type::key:
-                break;
-            case plist_element_type::plist:
-                this->task = plist_builder(&awaiting_handle);
-                break;
-            }
-            break;
-        }
-        case QXmlStreamReader::EndElement:
-        {
-            qInfo() << "end element name:" << reader->name();
-            const auto elementType = toPlistElementType(reader->name());
-            switch (elementType) {
-            case plist_element_type::none:
-                break;
-            case plist_element_type::array:
-            case plist_element_type::dict:
-                this->awaiting_handle.set_awaited_value(plist_variant{});
-                break;
-            case plist_element_type::real:
-                this->awaiting_handle.set_awaited_value(currentText.toDouble());
-                break;
-            case plist_element_type::integer:
-                this->awaiting_handle.set_awaited_value(currentText.toInt());
-                break;
-            case plist_element_type::string:
-            case plist_element_type::key:
-                this->awaiting_handle.set_awaited_value(currentText.toStdString());
-                break;
-            case plist_element_type::plist:
-            {
-                const auto plistObject = this->task();
-                qInfo() << "result.value=" << plistObject.value.index();
-                emit gotDestinationsPlist(plistObject);
-                break;
-            }
-            }
-            break;
-        }
-        case QXmlStreamReader::Characters:
-            currentText = reader->text().toString();
-            break;
-        case QXmlStreamReader::Comment:
-            break;
-        case QXmlStreamReader::DTD:
-            break;
-        case QXmlStreamReader::EntityReference:
-            qWarning() << "unresolved name:" << reader->name();
-            break;
-        case QXmlStreamReader::ProcessingInstruction:
-            qWarning() << "unexpected processing instruction:" << reader->text();
-            break;
-        }
-    }
-    if (reader->hasError()) {
-        if (reader->error() == QXmlStreamReader::PrematureEndOfDocumentError) {
-            return;
-        }
-        qWarning() << "xml reader had error:" << reader->errorString();
-        return;
-    }
-    qInfo() << "done reading";
-}
-
-void MainWindow::processFinished(int exitCode, int exitStatus)
-{
-    this->ui->statusbar->showMessage(
-        QString("Background run of '%1 %2' finished: exit code %3, status %4")
-            .arg(this->process->program(),
-                 this->process->arguments().join(' '),
-                 QString::number(exitCode),
-                 QString::number(exitStatus)));
-    qDebug() << "processFinished: exitCode=" << exitCode
-             << ", exitStatus=" << exitStatus;
-    if (exitStatus == QProcess::ExitStatus::CrashExit) {
-        QMessageBox::warning(this, "Error!",
-                             QString("'%1' command line tool crashed!")
-                                 .arg(this->tmUtilPath));
-        return;
-    }
-    if (exitCode != 0) {
-        QMessageBox::warning(this, "Error!",
-                             QString("Unexpected exit status for '%1' of %2!")
-                                 .arg(this->tmUtilPath, QString::number(exitCode)));
-        return;
-    }
-}
-
-void MainWindow::updateDestinationsWidget(const plist_object &plist)
-{
-    const auto dict = std::get<plist_dict>(plist.value);
-    const auto array = get<plist_array>(dict, "Destinations").value();
-    this->destinations = {};
-    for (const auto& element: array) {
-        this->destinations.push_back(std::get<plist_dict>(element.value));
-    }
-    this->ui->destinationsWidget->setRowCount(int(this->destinations.size()));
-    auto row = 0;
-    auto mountPoints = std::vector<std::filesystem::path>{};
-    auto font = QFont("Courier");
-    for (const auto& d: this->destinations) {
-        if (const auto v = get<std::string>(d, "Name")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable);
-            this->ui->destinationsWidget->setItem(row, 0, item);
-        }
-        if (const auto v = get<std::string>(d, "ID")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable);
-            this->ui->destinationsWidget->setItem(row, 1, item);
-        }
-        if (const auto v = get<std::string>(d, "Kind")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable);
-            this->ui->destinationsWidget->setItem(row, 2, item);
-        }
-        if (const auto v = get<std::string>(d, "MountPoint")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
-            item->setTextAlignment(Qt::AlignLeft|Qt::AlignVCenter);
-            item->setFont(font);
-            item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable);
-            ui->destinationsWidget->setItem(row, 3, item);
-            mountPoints.push_back(*v);
-        }
-        if (const auto v = get<int>(d, "LastDestination")) {
-            const auto item =
-                new QTableWidgetItem(QString::number(*v));
-            item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
-            item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable);
-            ui->destinationsWidget->setItem(row, 4, item);
-        }
-        ++row;
-    }
-    emit gotMountPoints(mountPoints);
-}
-
-void MainWindow::updateMountPointsView(const std::vector<std::filesystem::path>& paths)
-{
+    qInfo() << "updateMountPointsView called with" << paths.size();
     this->fileSystemWatcher->removePaths(fileSystemWatcher->directories());
-    auto font = QFont("Courier");
+    constexpr auto policy = QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     for (const auto& mp: paths) {
         // mp might be like "/Volumes/My Backup Disk"
         qDebug() << "mountPoint path=" << mp;
-        const auto si = space(mp);
+        const auto si = std::filesystem::space(mp);
         const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
         const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
         const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
-        item->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
+        item->setChildIndicatorPolicy(policy);
         item->setText(0, mp.c_str());
         item->setData(0, Qt::ItemDataRole::UserRole, QString(mp.c_str()));
-        item->setFont(0, font);
-        item->setWhatsThis(0, QString("This is the file system info for '%1'").arg(mp.c_str()));
+        item->setFont(0, pathFont);
+        item->setWhatsThis(0, QString("This is the file system info for '%1'")
+                                  .arg(mp.c_str()));
         item->setText(1, QString::number(capacityInGb, 'f', 2));
         item->setTextAlignment(1, Qt::AlignRight);
-        item->setToolTip(1, QString("Capacity of this filesystem (%1 bytes).").arg(si.capacity));
+        item->setToolTip(1, QString("Capacity of this filesystem (%1 bytes).")
+                                .arg(si.capacity));
         item->setText(2, QString::number(freeInGb, 'f', 2));
         item->setTextAlignment(2, Qt::AlignRight);
-        item->setToolTip(2, QString("Free space of this filesystem (%1 bytes).").arg(si.free));
+        item->setToolTip(2, QString("Free space of this filesystem (%1 bytes).")
+                                .arg(si.free));
         this->ui->mountPointsWidget->addTopLevelItem(item);
     }
     this->ui->mountPointsWidget->resizeColumnToContents(0);
@@ -516,7 +312,8 @@ void MainWindow::addDirEntry(QTreeWidgetItem *item,
         childItem->setData(entry.first, entry.second.first, entry.second.second);
     }
     if (isVolumeLevel) {
-        childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
+        childItem->setChildIndicatorPolicy(
+            QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
     }
     item->addChild(childItem);
 }
@@ -530,9 +327,12 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
     }
 
     DirectoryReader *workerThread = new DirectoryReader(item, this);
-    connect(workerThread, &DirectoryReader::ended, this, &MainWindow::reportDir);
-    connect(workerThread, &DirectoryReader::entry, this, &MainWindow::addDirEntry);
-    connect(workerThread, &DirectoryReader::finished, workerThread, &QObject::deleteLater);
+    connect(workerThread, &DirectoryReader::ended,
+            this, &MainWindow::reportDir);
+    connect(workerThread, &DirectoryReader::entry,
+            this, &MainWindow::addDirEntry);
+    connect(workerThread, &DirectoryReader::finished,
+            workerThread, &QObject::deleteLater);
     workerThread->start();
 }
 
@@ -548,23 +348,13 @@ void MainWindow::resizeMountPointsColumns()
 
 void MainWindow::updateBackupStatusWidget(const plist_object &plist)
 {
-    // process plist output from "tmutil status -X"
+    // display plist output from "tmutil status -X"
     qInfo() << "updateBackupStatusWidget called!";
 }
 
 void MainWindow::updateMountPointsDir(const QString &path)
 {
     qInfo() << "updateMountPointsDir called for path:" << path;
-}
-
-QStringList toStringList(const QList<QTreeWidgetItem*>& items)
-{
-    QStringList result;
-    for (const auto* item: items) {
-        const auto string = item->data(0, Qt::ItemDataRole::UserRole).toString();
-        result += string;
-    }
-    return result;
 }
 
 void MainWindow::deleteSelectedPaths()
@@ -629,5 +419,15 @@ void MainWindow::showAboutDialog()
     text.append(QString("Compiled with Qt version %1.\nRunning with Qt version %2.")
                     .arg(QT_VERSION_STR, qVersion()));
     QMessageBox::about(this, tr("About"), text);
+}
+
+void MainWindow::checkTmStatus()
+{
+    // need to call "tmutil status -X"
+}
+
+void MainWindow::showStatus(const QString& status)
+{
+    this->ui->statusbar->showMessage(status);
 }
 

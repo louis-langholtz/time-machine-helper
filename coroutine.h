@@ -85,7 +85,7 @@ struct await_handle {
         return tmp;
     }
 
-    void set_awaited_value(AwaitType value)
+    void set_value(AwaitType value)
     {
         this->value_to_await = std::move(value);
         if (this->previous && !this->previous.done()) {

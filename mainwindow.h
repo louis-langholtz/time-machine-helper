@@ -12,7 +12,6 @@
 #include <QString>
 #include <QVariant>
 
-#include "coroutine.h"
 #include "plist_object.h"
 
 QT_BEGIN_NAMESPACE
@@ -23,6 +22,7 @@ class QXmlStreamReader;
 class QProcess;
 class QFileSystemWatcher;
 class QTreeWidgetItem;
+class QTimer;
 
 class MainWindow : public QMainWindow
 {
@@ -32,15 +32,10 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    void readDestinationInfo();
-
 public slots:
-    void readMore();
-    void processFinished(int exitCode, int exitStatus);
-    void updateDestinationsWidget(const plist_object& plist);
     void resizeMountPointsColumns();
     void updateBackupStatusWidget(const plist_object& plist);
-    void updateMountPointsView(const std::vector<std::filesystem::path>& paths);
+    void updateMountPointsView(const std::vector<std::string>& paths);
     void updateMountPointsDir(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
     void deleteSelectedPaths();
@@ -54,25 +49,17 @@ public slots:
     void addDirEntry(QTreeWidgetItem *item,
                      const QMap<int, QString>& textMap,
                      const QMap<int, QPair<int, QVariant>>& dataMap);
+    void checkTmStatus();
+    void showStatus(const QString& status);
 
 signals:
-    void gotDestinationsPlist(const plist_object& plist);
-    void gotMountPoints(const std::vector<std::filesystem::path>& paths);
 
 private:
     Ui::MainWindow *ui{};
-    QProcess *process{};
-    QXmlStreamReader *reader{};
-    QString currentText;
-    await_handle<plist_variant> awaiting_handle;
-    coroutine_task<plist_object> task;
-    std::vector<std::map<std::string, plist_object>> destinations;
+    QTimer *timer{};
     QString tmUtilPath;
     QFileSystemWatcher *fileSystemWatcher{};
-    QFont pathFont{"Courier"};
+    QFont pathFont;
 };
-
-plist_element_type toPlistElementType(
-    const QStringView& string);
 
 #endif // MAINWINDOW_H
