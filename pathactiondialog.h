@@ -17,12 +17,16 @@ class PathActionDialog : public QDialog
 public:
     explicit PathActionDialog(QWidget *parent = nullptr);
 
+    QString errorString(
+        const QString& fallback = {}) const;
+
     QString text() const;
     QStringList paths() const;
     QString action() const;
-    bool asRoot() const;
+    bool asRoot() const noexcept;
     QProcessEnvironment environment() const;
     QString tmutilPath() const;
+    int stopSignal() const noexcept;
 
     void setText(const QString& text);
     void setPaths(const QStringList& paths);
@@ -31,10 +35,12 @@ public:
     void setEnvironment(
         const QProcessEnvironment& environment);
     void setTmutilPath(const QString& path);
+    void setStopSignal(int sig);
 
 public slots:
     void startAction();
-    void readProcessOuput();
+    void stopAction();
+    void readProcessOutput();
     void readProcessError();
     void setProcessStarted();
     void setProcessFinished(int code, int status);
@@ -47,13 +53,16 @@ private:
     QTextEdit* pathsWidget{};
     QPushButton* yesButton{};
     QPushButton* noButton{};
+    QPushButton* stopButton{};
     QTextEdit* outputWidget{};
     QProcess* process{};
     QStatusBar* statusBar{};
     QProcessEnvironment env;
     QStringList pathList;
     QString tmuPath{"tmutil"};
+    QString sudoPath{"sudo"};
     QString verb;
+    int stopSig{};
     bool withAdmin{};
     bool askPass{};
 };

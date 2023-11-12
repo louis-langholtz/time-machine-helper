@@ -183,6 +183,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::showAboutDialog);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
             this, &MainWindow::updateMountPointsDir);
+    connect(this->fileSystemWatcher, &QFileSystemWatcher::fileChanged,
+            this, &MainWindow::updateMountPointsFile);
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
             this, &MainWindow::selectedPathsChanged);
     connect(this->ui->deletingPushButton, &QPushButton::pressed,
@@ -247,7 +249,12 @@ void MainWindow::reportDir(QTreeWidgetItem *item,
 {
     const QString pathName = item->data(0, Qt::ItemDataRole::UserRole).toString();
     if (error == 0) {
-        this->fileSystemWatcher->addPath(pathName);
+        if (!this->fileSystemWatcher->addPath(pathName)) {
+            qInfo() << "reportDir unable to add path to watcher:" << pathName;
+        }
+        else {
+            qDebug() << "reportDir added path to watcher:" << pathName;
+        }
         for (const auto& entry: textMap.toStdMap()) {
             item->setText(entry.first, entry.second);
         }
@@ -284,12 +291,15 @@ void MainWindow::addDirEntry(QTreeWidgetItem *item,
                              const QMap<int, QString> &textMap,
                              const QMap<int, QPair<int, QVariant> > &dataMap)
 {
+    using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+    using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
+
     const auto childItem = new QTreeWidgetItem(item);
 
     // Following may not work. For more info, see:
     // https://stackoverflow.com/q/30088705/7410358
     // https://bugreports.qt.io/browse/QTBUG-28312
-    childItem->setChildIndicatorPolicy(QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator);
+    childItem->setChildIndicatorPolicy(ShowIndicator);
 
     childItem->setTextAlignment(3, Qt::AlignRight);
     childItem->setTextAlignment(4, Qt::AlignRight);
@@ -302,6 +312,10 @@ void MainWindow::addDirEntry(QTreeWidgetItem *item,
     for (const auto& entry: textMap.toStdMap()) {
         childItem->setText(entry.first, entry.second);
         switch (entry.first) {
+        case 4:
+        case 5:
+            // isBackupLevel = true;
+            break;
         case 6:
         case 7:
             isVolumeLevel = true;
@@ -312,8 +326,7 @@ void MainWindow::addDirEntry(QTreeWidgetItem *item,
         childItem->setData(entry.first, entry.second.first, entry.second.second);
     }
     if (isVolumeLevel) {
-        childItem->setChildIndicatorPolicy(
-            QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator);
+        childItem->setChildIndicatorPolicy(DontShowIndicator);
     }
     item->addChild(childItem);
 }
@@ -357,13 +370,25 @@ void MainWindow::updateMountPointsDir(const QString &path)
     qInfo() << "updateMountPointsDir called for path:" << path;
 }
 
+void MainWindow::updateMountPointsFile(const QString &path)
+{
+    qInfo() << "updateMountPointsFile called for path:" << path;
+}
+
 void MainWindow::deleteSelectedPaths()
 {
     const auto selectedPaths = toStringList(
         this->ui->mountPointsWidget->selectedItems());
     qInfo() << "deleteSelectedPaths called for" << selectedPaths;
 
-    const auto dialog = new PathActionDialog(this);
+    const auto dialog = new PathActionDialog{this};
+    {
+        // Ensures output of tmutil shown as soon as available.
+        auto env = dialog->environment();
+        env.insert("STDBUF", "L"); // see "man 3 setbuf"
+        dialog->setEnvironment(env);
+    }
+    dialog->setTmutilPath(this->tmUtilPath);
     dialog->setWindowTitle("Deletion Dialog");
     dialog->setText("Are you sure that you want to delete the following paths?");
     dialog->setPaths(selectedPaths);

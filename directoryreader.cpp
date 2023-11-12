@@ -11,15 +11,25 @@ namespace {
 
 static constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
 
+// Content of this attribute seems to be comma separated list, where
+// first element is one of the following:
+//   "SnapshotStorage","MachineStore", "Backup", "VolumeStore"
+static constexpr auto timeMachineMetaAttr =
+    "com.apple.timemachine.private.structure.metadata";
+
 static constexpr auto backupAttrPrefix = "com.apple.backup.";
 
 static constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
+
+// Machine level attributes...
 static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
 static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
 static constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
 static constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
 static constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
 static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
+
+// Volume level attributes...
 static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
 static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
 
@@ -51,7 +61,6 @@ std::map<std::string, std::vector<char>> getInterestingAttrs(
         return {};
     }
     if (size == 0) {
-        qDebug() << "no attrs for" << path.c_str();
         return {};
     }
     auto nameBuffer = std::string{};
@@ -76,12 +85,14 @@ std::map<std::string, std::vector<char>> getInterestingAttrs(
             }
             continue;
         } while (false);
-        const auto reserveSize = getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
+        const auto reserveSize =
+            getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
         if (reserveSize < 0) {
             continue;
         }
         auto buffer = std::vector<char>(std::size_t(reserveSize) + 1u);
-        const auto actualSize = getxattr(path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
+        const auto actualSize =
+            getxattr(path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
         if (actualSize < 0) {
             continue;
         }
@@ -166,8 +177,8 @@ void DirectoryReader::run() {
             textMap.insert(4, QString::fromStdString(toString(*value)));
         }
         if (const auto value = get<std::vector<char>>(subdirAttrs, totalBytesCopiedAttr)) {
-            const auto totalBytesCopiedAsString = QString::fromStdString(toString(*value));
-            qDebug() << "bytesCopiedAttr:" << totalBytesCopiedAsString;
+            const auto totalBytesCopiedAsString =
+                QString::fromStdString(toString(*value));
             auto okay = false;
             const auto bytes = totalBytesCopiedAsString.toLongLong(&okay);
             if (okay) {
@@ -191,7 +202,6 @@ void DirectoryReader::run() {
     }
     QMap<int, QString> dirTextMap;
     if (countMachineBackups) {
-        qDebug() << "count of machine backups is:" << *countMachineBackups;
         dirTextMap.insert(3, QString::number(*countMachineBackups));
         item->setTextAlignment(3, Qt::AlignRight);
     }

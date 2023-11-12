@@ -14,6 +14,7 @@ namespace {
 
 static constexpr auto tmutilDestInfoVerb = "destinationinfo";
 static constexpr auto tmutilXmlOption    = "-X";
+constexpr auto noExplanationMsg = "no explanation";
 
 template <class T>
 std::optional<T> get(const plist_dict& map, const std::string& key)
@@ -67,6 +68,14 @@ plist_element_type toPlistElementType(const QStringView& string)
 DestinationsWidget::DestinationsWidget(QWidget *parent)
     : QTableWidget{parent}
 {
+}
+
+QString DestinationsWidget::errorString(
+    const QString& fallback) const
+{
+    return this->process
+        ? this->process->errorString()
+        : fallback;
 }
 
 void DestinationsWidget::readMore()
@@ -161,7 +170,8 @@ void DestinationsWidget::readMore()
         return;
     }
     if (reader->hasError()) {
-        qWarning() << "xml reader had error:" << reader->errorString();
+        qWarning() << "xml reader had error:"
+                   << reader->errorString();
         return;
     }
     qInfo() << "done reading";
@@ -187,6 +197,8 @@ void DestinationsWidget::queryDestinations()
             this, &DestinationsWidget::readMore);
     connect(this->process, &QProcess::finished,
             this, &DestinationsWidget::processFinished);
+    connect(this->process, &QProcess::errorOccurred,
+            this, &DestinationsWidget::processErrorOccurred);
     this->process->start(this->tmuPath,
                          QStringList() << tmutilDestInfoVerb << tmutilXmlOption,
                          QIODeviceBase::ReadOnly);
@@ -214,6 +226,22 @@ void DestinationsWidget::processFinished(int exitCode, int exitStatus)
     if (!title.isEmpty()) {
         QMessageBox::warning(this, title, text);
     }
+}
+
+void DestinationsWidget::processErrorOccurred(int error)
+{
+    const auto status =
+        QString("Call to '%1 %2 %3' erred: %4.")
+                            .arg(this->tmuPath,
+                                 tmutilDestInfoVerb,
+                                 tmutilXmlOption,
+                                 errorString(noExplanationMsg));
+    emit gotStatus(status);
+    QMessageBox msgBox;
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setText("Got process error when trying to query system destinations.");
+    msgBox.setInformativeText(status);
+    msgBox.exec();
 }
 
 void DestinationsWidget::updateUI(const plist_object &plist)

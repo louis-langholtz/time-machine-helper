@@ -220,20 +220,20 @@
         <item>
          <widget class="QPushButton" name="deletingPushButton">
           <property name="toolTip">
-           <string>Deletes selected paths.</string>
+           <string>Deletes selected backups.</string>
           </property>
           <property name="text">
-           <string>Delete...</string>
+           <string>Delete Backups...</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="verifyingPushButton">
           <property name="toolTip">
-           <string>Verifies selected paths.</string>
+           <string>Verifies selected backups.</string>
           </property>
           <property name="text">
-           <string>Verify...</string>
+           <string>Verify Backups...</string>
           </property>
          </widget>
         </item>

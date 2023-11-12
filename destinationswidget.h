@@ -20,16 +20,22 @@ public:
     explicit DestinationsWidget(
         QWidget *parent = nullptr);
 
+    QString errorString(
+        const QString& fallback = {}) const;
+
 public slots:
-    void readMore();
     void queryDestinations();
-    void processFinished(int exitCode, int exitStatus);
-    void updateUI(const plist_object &plist);
 
 signals:
     void gotPaths(const std::vector<std::string>& paths);
     void gotStatus(const QString& status);
     void gotDestinationsPlist(const plist_object& plist);
+
+private slots:
+    void readMore();
+    void updateUI(const plist_object &plist);
+    void processFinished(int exitCode, int exitStatus);
+    void processErrorOccurred(int error);
 
 private:
     QXmlStreamReader *reader{};

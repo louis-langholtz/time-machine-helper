@@ -19,7 +19,6 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class QXmlStreamReader;
-class QProcess;
 class QFileSystemWatcher;
 class QTreeWidgetItem;
 class QTimer;
@@ -37,6 +36,7 @@ public slots:
     void updateBackupStatusWidget(const plist_object& plist);
     void updateMountPointsView(const std::vector<std::string>& paths);
     void updateMountPointsDir(const QString& path);
+    void updateMountPointsFile(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
     void deleteSelectedPaths();
     void restoreSelectedPaths();
