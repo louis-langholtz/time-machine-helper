@@ -215,7 +215,6 @@ MainWindow::~MainWindow()
 void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
 {
     qInfo() << "updateMountPointsView called with" << paths.size();
-    this->fileSystemWatcher->removePaths(fileSystemWatcher->directories());
     constexpr auto policy = QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     for (const auto& mp: paths) {
         // mp might be like "/Volumes/My Backup Disk"
@@ -368,11 +367,15 @@ void MainWindow::updateBackupStatusWidget(const plist_object &plist)
 void MainWindow::updateMountPointsDir(const QString &path)
 {
     qInfo() << "updateMountPointsDir called for path:" << path;
+    qInfo() << "d dirs watched" << this->fileSystemWatcher->directories();
+    qInfo() << "d fils watched" << this->fileSystemWatcher->files();
 }
 
 void MainWindow::updateMountPointsFile(const QString &path)
 {
     qInfo() << "updateMountPointsFile called for path:" << path;
+    qInfo() << "f dirs watched" << this->fileSystemWatcher->directories();
+    qInfo() << "f fils watched" << this->fileSystemWatcher->files();
 }
 
 void MainWindow::deleteSelectedPaths()

@@ -3,6 +3,7 @@
 
 #include <map>
 #include <string>
+#include <type_traits> // for std::true_type, std::false_type
 #include <variant>
 #include <vector>
 
@@ -14,6 +15,8 @@ using plist_dict = std::map<std::string, plist_object>;
 using plist_real = double;
 using plist_integer = int;
 using plist_string = std::string;
+using plist_true = std::true_type;
+using plist_false = std::false_type;
 
 using plist_variant = std::variant<
     plist_none,
@@ -21,7 +24,9 @@ using plist_variant = std::variant<
     plist_dict,
     plist_real,
     plist_integer,
-    plist_string
+    plist_string,
+    plist_true,
+    plist_false
     >;
 
 enum class plist_element_type: std::size_t {
@@ -31,6 +36,8 @@ enum class plist_element_type: std::size_t {
     real,
     integer,
     string,
+    so_true,
+    so_false,
     key,
     plist,
 };
