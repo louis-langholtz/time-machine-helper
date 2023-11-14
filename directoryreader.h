@@ -1,6 +1,9 @@
 #ifndef DIRECTORYREADER_H
 #define DIRECTORYREADER_H
 
+#include <filesystem>
+
+#include <QByteArray>
 #include <QMap>
 #include <QPair>
 #include <QString>
@@ -17,12 +20,11 @@ public:
                     QObject *parent = nullptr);
 
 signals:
-    void ended(QTreeWidgetItem *item,
-               const QMap<int, QString>& textMap,
-               int error);
     void entry(QTreeWidgetItem *item,
-               const QMap<int, QString>& textMap,
-               const QMap<int, QPair<int, QVariant>>& dataMap);
+               const QMap<QString, QByteArray>& attrs,
+               const std::filesystem::path& path,
+               const std::filesystem::file_status& status);
+    void ended(QTreeWidgetItem *item, std::error_code ec);
 
 private:
     void run() override;

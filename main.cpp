@@ -1,6 +1,8 @@
-#include "mainwindow.h"
+#include <filesystem>
 
 #include <QApplication>
+
+#include "mainwindow.h"
 
 int main(int argc, char *argv[])
 {
@@ -9,6 +11,12 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName("Time Machine Helper");
 
     QApplication a(argc, argv);
+
+    // Allow some standard library types as QVariant...
+    qRegisterMetaType<std::filesystem::path>();
+    qRegisterMetaType<std::filesystem::file_status>();
+    qRegisterMetaType<std::error_code>();
+
     MainWindow w;
     w.show();
 

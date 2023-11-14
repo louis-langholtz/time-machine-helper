@@ -43,12 +43,11 @@ public slots:
     void verifySelectedPaths();
     void selectedPathsChanged();
     void showAboutDialog();
-    void reportDir(QTreeWidgetItem *item,
-                   const QMap<int, QString>& textMap,
-                   int error);
+    void reportDir(QTreeWidgetItem *item, std::error_code ec);
     void addDirEntry(QTreeWidgetItem *item,
-                     const QMap<int, QString>& textMap,
-                     const QMap<int, QPair<int, QVariant>>& dataMap);
+                     const QMap<QString, QByteArray>& attrs,
+                     const std::filesystem::path& path,
+                     const std::filesystem::file_status& status);
     void checkTmStatus();
     void showStatus(const QString& status);
 

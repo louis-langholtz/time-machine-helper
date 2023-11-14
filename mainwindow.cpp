@@ -28,6 +28,18 @@
 
 namespace {
 
+// Machine level attributes...
+static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
+static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
+static constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
+static constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
+static constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
+static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
+
+// Volume level attributes...
+static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
+static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
+
 template <class T>
 std::optional<T> get(const plist_dict& map, const std::string& key)
 {
@@ -243,27 +255,24 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
 }
 
 void MainWindow::reportDir(QTreeWidgetItem *item,
-                           const QMap<int, QString>& textMap,
-                           int error)
+                           std::error_code ec)
 {
-    const QString pathName = item->data(0, Qt::ItemDataRole::UserRole).toString();
-    if (error == 0) {
+    const QString pathName =
+        item->data(0, Qt::ItemDataRole::UserRole).toString();
+    if (!ec) {
         if (!this->fileSystemWatcher->addPath(pathName)) {
-            qInfo() << "reportDir unable to add path to watcher:" << pathName;
+            qInfo() << "reportDir unable to add path to watcher:"
+                    << pathName;
         }
         else {
-            qDebug() << "reportDir added path to watcher:" << pathName;
-        }
-        for (const auto& entry: textMap.toStdMap()) {
-            item->setText(entry.first, entry.second);
+            qDebug() << "reportDir added path to watcher:"
+                     << pathName;
         }
         return;
     }
 
     item->setToolTip(0, cantListDirWarning);
     item->setBackground(0, QBrush(QColor(Qt::red)));
-
-    const auto ec = std::make_error_code(std::errc(error));
 
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
@@ -275,59 +284,121 @@ void MainWindow::reportDir(QTreeWidgetItem *item,
                                .arg(QString::fromStdString(ec.message())));
     if (ec == std::make_error_code(std::errc::operation_not_permitted)) {
         const auto appPath = QCoreApplication::applicationFilePath();
-        const auto fileName = std::filesystem::path(appPath.toStdString()).filename();
+        const auto fileName =
+            std::filesystem::path(appPath.toStdString()).filename();
         auto infoText = QString("Is macOS *%1* perhaps not enabled for '%2'?")
                             .arg(fullDiskAccessStr, fileName.c_str());
         infoText.append(QString("\nTo check, choose Apple menu  > %1 > %2 > %3")
-                            .arg(systemSettingsStr, privacySecurityStr, fullDiskAccessStr));
+                            .arg(systemSettingsStr,
+                                 privacySecurityStr,
+                                 fullDiskAccessStr));
         msgBox.setInformativeText(infoText);
-        // perhaps also run: open "x-apple.systempreferences:com.apple.preference.security"
+        // perhaps also run:
+        // open "x-apple.systempreferences:com.apple.preference.security"
     }
     msgBox.exec();
 }
 
-void MainWindow::addDirEntry(QTreeWidgetItem *item,
-                             const QMap<int, QString> &textMap,
-                             const QMap<int, QPair<int, QVariant> > &dataMap)
+std::optional<QByteArray> get(
+    const QMap<QString, QByteArray>& attrs,
+    const QString& key)
+{
+    const auto it = attrs.find(key);
+    if (it != attrs.end()) {
+        return {*it};
+    }
+    return {};
+}
+
+QString pathTooltip(const QMap<QString, QByteArray>& attrs)
+{
+    if (const auto v = get(attrs, machineUuidAttr)) {
+        return "This is a \"machine directory\".";
+    }
+    if (const auto v = get(attrs, machineCompNameAttr)) {
+        return "This is a \"machine directory\".";
+    }
+    if (const auto v = get(attrs, snapshotTypeAttr)) {
+        return "This is a \"backup\".";
+    }
+    if (const auto v = get(attrs, fileSystemTypeAttr)) {
+        return "This is a \"volume store\".";
+    }
+    return {};
+}
+
+void MainWindow::addDirEntry(
+    QTreeWidgetItem *parent,
+    const QMap<QString, QByteArray>& attrs,
+    const std::filesystem::path& path,
+    const std::filesystem::file_status& status)
 {
     using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
 
-    const auto childItem = new QTreeWidgetItem(item);
+    const auto childItem = new QTreeWidgetItem(parent);
+
+    childItem->setTextAlignment(0, Qt::AlignLeft);
+    childItem->setFont(0, this->pathFont);
+    childItem->setText(0, QString::fromStdString(path.filename().string()));
+    childItem->setData(0, Qt::ItemDataRole::UserRole, QString(path.c_str()));
+    childItem->setToolTip(0, pathTooltip(attrs));
+
+    childItem->setTextAlignment(1, Qt::AlignRight);
+
+    childItem->setTextAlignment(2, Qt::AlignRight);
+
+    childItem->setTextAlignment(3, Qt::AlignRight);
+    if (get(attrs, machineUuidAttr)) {
+        childItem->setText(3, "?");
+        childItem->setToolTip(3, "Expand to get value.");
+    }
+
+    auto isBackup = false;
+
+    childItem->setTextAlignment(4, Qt::AlignRight);
+    if (const auto v = get(attrs, snapshotTypeAttr)) {
+        isBackup = true;
+        childItem->setText(4, QString(*v));
+    }
+
+    childItem->setTextAlignment(5, Qt::AlignRight);
+    if (const auto v = get(attrs, totalBytesCopiedAttr)) {
+        isBackup = true;
+        auto okay = false;
+        const auto bytes = QString(*v).toLongLong(&okay);
+        if (okay) {
+            const auto megaBytes = double(bytes) / (1000 * 1000);
+            childItem->setText(5, QString::number(megaBytes, 'f', 2));
+        }
+    }
+
+    childItem->setTextAlignment(6, Qt::AlignCenter);
+    if (const auto v = get(attrs, fileSystemTypeAttr)) {
+        childItem->setText(6, QString(*v));
+    }
+
+    childItem->setTextAlignment(7, Qt::AlignRight);
+    if (const auto v = get(attrs, volumeBytesUsedAttr)) {
+        childItem->setText(7, QString(*v));
+    }
+
+    const auto indicatorPolicy =
+        (status.type() == std::filesystem::file_type::directory)
+                                     ? ShowIndicator
+                                     : DontShowIndicator;
 
     // Following may not work. For more info, see:
     // https://stackoverflow.com/q/30088705/7410358
     // https://bugreports.qt.io/browse/QTBUG-28312
-    childItem->setChildIndicatorPolicy(ShowIndicator);
+    childItem->setChildIndicatorPolicy(indicatorPolicy);
 
-    childItem->setTextAlignment(3, Qt::AlignRight);
-    childItem->setTextAlignment(4, Qt::AlignRight);
-    childItem->setTextAlignment(5, Qt::AlignRight);
-    childItem->setTextAlignment(6, Qt::AlignCenter);
-    childItem->setTextAlignment(7, Qt::AlignRight);
-
-    childItem->setFont(0, this->pathFont);
-    auto isVolumeLevel = false;
-    for (const auto& entry: textMap.toStdMap()) {
-        childItem->setText(entry.first, entry.second);
-        switch (entry.first) {
-        case 4:
-        case 5:
-            // isBackupLevel = true;
-            break;
-        case 6:
-        case 7:
-            isVolumeLevel = true;
-            break;
-        }
+    parent->addChild(childItem);
+    if (isBackup) {
+        auto ok = false;
+        const auto t = parent->text(3);
+        parent->setText(3, QString::number(t.toLongLong(&ok) + 1));
     }
-    for (const auto& entry: dataMap.toStdMap()) {
-        childItem->setData(entry.first, entry.second.first, entry.second.second);
-    }
-    if (isVolumeLevel) {
-        childItem->setChildIndicatorPolicy(DontShowIndicator);
-    }
-    item->addChild(childItem);
 }
 
 void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
