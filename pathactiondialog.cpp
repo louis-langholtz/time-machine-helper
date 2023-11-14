@@ -22,12 +22,12 @@ constexpr auto noExplanationMsg =
 QString toHtmlList(const QStringList& strings)
 {
     QString result;
-    result.append("<small><pre>");
+    result.append("<pre>");
     for (const auto& string: strings) {
         result.append(string);
         result.append('\n');
     }
-    result.append("</pre></small>");
+    result.append("</pre>");
     return result;
 }
 
@@ -56,6 +56,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 
     this->pathsWidget->setObjectName("pathsWidget");
     this->pathsWidget->setReadOnly(true);
+    this->pathsWidget->setLineWrapMode(QTextEdit::NoWrap);
 
     this->yesButton->setEnabled(false);
 
@@ -65,7 +66,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->stopButton->setEnabled(false);
 
     this->outputWidget->setObjectName("outputWidget");
-    this->outputWidget->setEnabled(false);
+    this->outputWidget->setLineWrapMode(QTextEdit::NoWrap);
     this->outputWidget->setReadOnly(true);
     this->outputWidget->document()->setDefaultStyleSheet(
         "* {font-family: \"Andale Mono\";} .stdout {color:green;} .stderr {color:red;}");
