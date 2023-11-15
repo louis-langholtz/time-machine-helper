@@ -49,7 +49,6 @@ void DestinationsWidget::queryDestinations()
 void DestinationsWidget::handleStatus(const plist_object &plist)
 {
     // display plist output from "tmutil status -X"
-    qInfo() << "handleStatusPlist called!";
     const auto *dict = std::get_if<plist_dict>(&plist.value);
     if (!dict) {
         qWarning() << "handleStatusPlist: plist value not dict!";
@@ -57,7 +56,6 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
     }
 
     const auto clientID = get<plist_string>(*dict, "ClientID");
-    qDebug() << "clientID:" << clientID.value_or("<none>");
 
     // When running...
     const auto phase = get<plist_string>(*dict, "BackupPhase");
@@ -65,11 +63,6 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
     const auto destMP = get<plist_string>(*dict, "DestinationMountPoint");
     const auto fractOfProg = get<plist_real>(*dict, "FractionOfProgressBar");
     const auto prog = get<plist_dict>(*dict, "Progress");
-    const auto runningTrue = get<plist_true>(*dict, "Running");
-
-    // When not running...
-    const auto percent = get<plist_real>(*dict, "Percent");
-    const auto runningFalse = get<plist_false>(*dict, "Running");
 
     if (destMP) {
         const auto rows = this->rowCount();
@@ -78,12 +71,25 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
             if (!cell || (cell->text() != destMP->c_str())) {
                 continue;
             }
-            auto item = this->item(r, 5);
-            if (!item) {
-                item = new QTableWidgetItem;
-                this->setItem(r, 5, item);
+            auto item = this->item(r, 6);
+            auto text = QString{};
+            auto tooltip = QString{};
+            text.append(QString::fromStdString(phase.value_or("")));
+            if (prog) {
+                if (const auto v = get<plist_real>(*prog, "Percent")) {
+                    if (!text.isEmpty()) {
+                        text.append(' ');
+                    }
+                    text.append(QString::number(*v * 100.0, 'f', 1));
+                    text.append('%');
+                }
+                if (const auto v = get<plist_real>(*prog, "TimeRemaining")) {
+                    tooltip = QString("About %1 minutes remaining.")
+                                  .arg(QString::number(*v / 60, 'f', 1));
+                }
             }
-            item->setText(QString::fromStdString(phase.value_or("")));
+            item->setText(text);
+            item->setToolTip(tooltip);
         }
     }
 }
@@ -118,42 +124,69 @@ void DestinationsWidget::updateUI(const plist_object &plist)
     auto mountPoints = std::vector<std::string>{};
     auto row = 0;
     for (const auto& d: destinations) {
-        if (const auto v = get<std::string>(d, "Name")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
+        {
+            const auto item = new QTableWidgetItem;
+            const auto v = get<std::string>(d, "Name");
+            item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
             this->setItem(row, 0, item);
         }
-        if (const auto v = get<std::string>(d, "ID")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
+        {
+            const auto item = new QTableWidgetItem;
+            const auto v = get<std::string>(d, "ID");
+            item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
             this->setItem(row, 1, item);
         }
-        if (const auto v = get<std::string>(d, "Kind")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
+        {
+            const auto item = new QTableWidgetItem;
+            const auto v = get<std::string>(d, "Kind");
+            item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
             this->setItem(row, 2, item);
         }
-        if (const auto v = get<std::string>(d, "MountPoint")) {
-            const auto item =
-                new QTableWidgetItem(QString::fromStdString(*v));
+        const auto mp = get<std::string>(d, "MountPoint");
+        {
+            const auto item = new QTableWidgetItem;
+            item->setText(QString::fromStdString(mp.value_or("")));
             item->setTextAlignment(Qt::AlignLeft|Qt::AlignVCenter);
             item->setFont(font);
             item->setFlags(itemFlags);
             this->setItem(row, 3, item);
-            mountPoints.push_back(*v);
         }
-        if (const auto v = get<int>(d, "LastDestination")) {
-            const auto item =
-                new QTableWidgetItem(QString::number(*v));
+        auto ec = std::error_code{};
+        const auto si = mp? std::filesystem::space(*mp, ec): std::filesystem::space_info{};
+        {
+            const auto item = new QTableWidgetItem;
+            if (mp && !ec) {
+                const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
+                item->setText(QString::number(capacityInGb, 'f', 2));
+            }
             item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
             item->setFlags(itemFlags);
             this->setItem(row, 4, item);
+        }
+        {
+            const auto item = new QTableWidgetItem;
+            if (mp && !ec) {
+                const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
+                item->setText(QString::number(freeInGb, 'f', 2));
+            }
+            item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
+            item->setFlags(itemFlags);
+            this->setItem(row, 5, item);
+        }
+        {
+            const auto item = new QTableWidgetItem;
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setFlags(itemFlags);
+            this->setItem(row, 6, item);
+        }
+        if (mp) {
+            mountPoints.push_back(*mp);
         }
         ++row;
     }

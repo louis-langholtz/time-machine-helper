@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>919</width>
+    <width>1000</width>
     <height>600</height>
    </rect>
   </property>
@@ -72,12 +72,32 @@
         </column>
         <column>
          <property name="text">
-          <string>Last Destination</string>
+          <string>Capacity</string>
+         </property>
+         <property name="toolTip">
+          <string>Capacity of the volume.</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
          </property>
         </column>
         <column>
          <property name="text">
-          <string>Status</string>
+          <string>Free</string>
+         </property>
+         <property name="toolTip">
+          <string>Free space within the volume.</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Backup Status</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup phase &amp; more when backup running</string>
          </property>
         </column>
        </widget>
@@ -273,7 +293,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>919</width>
+     <width>1000</width>
      <height>24</height>
     </rect>
    </property>

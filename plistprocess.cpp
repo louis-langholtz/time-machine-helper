@@ -123,7 +123,6 @@ void PlistProcess::handleFinished(int exitCode, int exitStatus)
 
 void PlistProcess::readMore()
 {
-    qDebug() << "readMore called";
     while (!reader->atEnd()) {
         const auto tokenType = reader->readNext();
         switch (tokenType) {
@@ -133,15 +132,11 @@ void PlistProcess::readMore()
             qWarning() << "invalid token type!";
             break;
         case QXmlStreamReader::StartDocument:
-            qInfo() << "start document";
             break;
         case QXmlStreamReader::EndDocument:
-            qInfo() << "end document";
             break;
         case QXmlStreamReader::StartElement:
         {
-            qInfo() << "start element name:"
-                    << reader->name();
             const auto elementType =
                 toPlistElementType(reader->name());
             switch (elementType) {
@@ -170,7 +165,6 @@ void PlistProcess::readMore()
         }
         case QXmlStreamReader::EndElement:
         {
-            qInfo() << "end element name:" << reader->name();
             const auto elementType =
                 toPlistElementType(reader->name());
             switch (elementType) {
@@ -208,8 +202,6 @@ void PlistProcess::readMore()
             case plist_element_type::plist:
             {
                 const auto plistObject = this->task();
-                qInfo() << "result.value="
-                        << plistObject.value.index();
                 emit gotPlist(plistObject);
                 break;
             }
@@ -247,5 +239,4 @@ void PlistProcess::readMore()
                           .arg(this->reader->errorString()));
         return;
     }
-    qInfo() << "done reading";
 }
