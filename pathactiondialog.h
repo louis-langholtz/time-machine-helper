@@ -10,6 +10,7 @@ class QLabel;
 class QPushButton;
 class QProcess;
 class QStatusBar;
+class QSplitter;
 
 class PathActionDialog : public QDialog
 {
@@ -26,6 +27,7 @@ public:
     bool asRoot() const noexcept;
     QProcessEnvironment environment() const;
     QString tmutilPath() const;
+    QString pathPrefix() const;
     int stopSignal() const noexcept;
 
     void setText(const QString& text);
@@ -35,6 +37,7 @@ public:
     void setEnvironment(
         const QProcessEnvironment& environment);
     void setTmutilPath(const QString& path);
+    void setPathPrefix(const QString& prefix);
     void setStopSignal(int sig);
 
 public slots:
@@ -49,17 +52,19 @@ public slots:
 signals:
 
 private:
+    QSplitter* splitter{};
     QLabel* textLabel{};
     QTextEdit* pathsWidget{};
     QPushButton* yesButton{};
     QPushButton* noButton{};
     QPushButton* stopButton{};
     QTextEdit* outputWidget{};
-    QProcess* process{};
     QStatusBar* statusBar{};
+    QProcess* process{};
     QProcessEnvironment env;
     QStringList pathList;
     QString tmuPath{"tmutil"};
+    QString pathPre{};
     QString sudoPath{"sudo"};
     QString verb;
     int stopSig{};

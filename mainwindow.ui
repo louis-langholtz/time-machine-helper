@@ -228,6 +228,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="uniqueSizePushButton">
+          <property name="toolTip">
+           <string>Unique size of paths within a machine directory.</string>
+          </property>
+          <property name="text">
+           <string>Unique Size...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="verifyingPushButton">
           <property name="toolTip">
            <string>Verifies selected backups.</string>

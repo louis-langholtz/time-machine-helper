@@ -28,6 +28,12 @@
 
 namespace {
 
+// Content of this attribute seems to be comma separated list, where
+// first element is one of the following:
+//   "SnapshotStorage","MachineStore", "Backup", "VolumeStore"
+static constexpr auto timeMachineMetaAttr =
+    "com.apple.timemachine.private.structure.metadata";
+
 // Machine level attributes...
 static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
 static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
@@ -39,6 +45,18 @@ static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalByt
 // Volume level attributes...
 static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
 static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
+
+static constexpr auto tmutilSettingsKey = "tmutil_path";
+static constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
+static constexpr auto fullDiskAccessStr = "Full Disk Access";
+static constexpr auto systemSettingsStr = "System Settings";
+static constexpr auto privacySecurityStr = "Privacy & Security";
+static constexpr auto cantListDirWarning = "Warning: unable to list contents of this directory!";
+
+static constexpr auto tmutilDeleteVerb     = "delete";
+static constexpr auto tmutilVerifyVerb     = "verifychecksums";
+static constexpr auto tmutilUniqueSizeVerb = "uniquesize";
+static constexpr auto tmutilStatusVerb     = "status";
 
 template <class T>
 std::optional<T> get(const plist_dict& map, const std::string& key)
@@ -130,15 +148,33 @@ QStringList toStringList(const QList<QTreeWidgetItem*>& items)
     return result;
 }
 
-static constexpr auto tmutilSettingsKey = "tmutil_path";
-static constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
-static constexpr auto fullDiskAccessStr = "Full Disk Access";
-static constexpr auto systemSettingsStr = "System Settings";
-static constexpr auto privacySecurityStr = "Privacy & Security";
-static constexpr auto cantListDirWarning = "Warning: unable to list contents of this directory!";
+std::optional<QByteArray> get(
+    const QMap<QString, QByteArray>& attrs,
+    const QString& key)
+{
+    const auto it = attrs.find(key);
+    if (it != attrs.end()) {
+        return {*it};
+    }
+    return {};
+}
 
-static constexpr auto tmutilDeleteVerb   = "delete";
-static constexpr auto tmutilStatusVerb   = "status";
+QString pathTooltip(const QMap<QString, QByteArray>& attrs)
+{
+    if (const auto v = get(attrs, machineUuidAttr)) {
+        return "This is a \"machine directory\".";
+    }
+    if (const auto v = get(attrs, machineCompNameAttr)) {
+        return "This is a \"machine directory\".";
+    }
+    if (const auto v = get(attrs, snapshotTypeAttr)) {
+        return "This is a \"backup\".";
+    }
+    if (const auto v = get(attrs, fileSystemTypeAttr)) {
+        return "This is a \"volume store\".";
+    }
+    return {};
+}
 
 }
 
@@ -153,6 +189,7 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->setupUi(this);
 
     this->ui->deletingPushButton->setDisabled(true);
+    this->ui->uniqueSizePushButton->setDisabled(true);
     this->ui->restoringPushButton->setDisabled(true);
     this->ui->verifyingPushButton->setDisabled(true);
     this->ui->mountPointsWidget->
@@ -201,6 +238,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::selectedPathsChanged);
     connect(this->ui->deletingPushButton, &QPushButton::pressed,
             this, &MainWindow::deleteSelectedPaths);
+    connect(this->ui->uniqueSizePushButton, &QPushButton::pressed,
+            this, &MainWindow::uniqueSizeSelectedPaths);
     connect(this->ui->restoringPushButton, &QPushButton::pressed,
             this, &MainWindow::restoreSelectedPaths);
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
@@ -299,34 +338,6 @@ void MainWindow::reportDir(QTreeWidgetItem *item,
     msgBox.exec();
 }
 
-std::optional<QByteArray> get(
-    const QMap<QString, QByteArray>& attrs,
-    const QString& key)
-{
-    const auto it = attrs.find(key);
-    if (it != attrs.end()) {
-        return {*it};
-    }
-    return {};
-}
-
-QString pathTooltip(const QMap<QString, QByteArray>& attrs)
-{
-    if (const auto v = get(attrs, machineUuidAttr)) {
-        return "This is a \"machine directory\".";
-    }
-    if (const auto v = get(attrs, machineCompNameAttr)) {
-        return "This is a \"machine directory\".";
-    }
-    if (const auto v = get(attrs, snapshotTypeAttr)) {
-        return "This is a \"backup\".";
-    }
-    if (const auto v = get(attrs, fileSystemTypeAttr)) {
-        return "This is a \"volume store\".";
-    }
-    return {};
-}
-
 void MainWindow::addDirEntry(
     QTreeWidgetItem *parent,
     const QMap<QString, QByteArray>& attrs,
@@ -338,7 +349,7 @@ void MainWindow::addDirEntry(
 
     const auto childItem = new QTreeWidgetItem(parent);
 
-    childItem->setTextAlignment(0, Qt::AlignLeft);
+    childItem->setTextAlignment(0, Qt::AlignLeft|Qt::AlignVCenter);
     childItem->setFont(0, this->pathFont);
     childItem->setText(0, QString::fromStdString(path.filename().string()));
     childItem->setData(0, Qt::ItemDataRole::UserRole, QString(path.c_str()));
@@ -463,6 +474,7 @@ void MainWindow::deleteSelectedPaths()
         dialog->setEnvironment(env);
     }
     dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setPathPrefix("-p");
     dialog->setWindowTitle("Deletion Dialog");
     dialog->setText("Are you sure that you want to delete the following paths?");
     dialog->setPaths(selectedPaths);
@@ -477,9 +489,27 @@ void MainWindow::deleteSelectedPaths()
     // Deleting: /Volumes/disk/Backups.backupdb/machine/backup2
     // Deleted (1.2G): /Volumes/disk/Backups.backupdb/machine/backup2
     // Total deleted: 3.78 GB
-    // May need to use something like osascript to authorize tmutil
-    // osascript -e 'do shell script "tmutil delete -p path1 -p path2" with prompt "Time Machine Helper is trying to run a tmutil administrative command" with administrator privileges'
-    // osascript -e 'do shell script "echo hello bin two" with prompt "Time Machine Helper is trying to run a tmutil administrative command" with administrator privileges'
+}
+
+void MainWindow::uniqueSizeSelectedPaths()
+{
+    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    qInfo() << "uniqueSizeSelectedPaths called for" << selectedPaths;
+
+    const auto dialog = new PathActionDialog{this};
+    {
+        // Ensures output of tmutil shown as soon as available.
+        auto env = dialog->environment();
+        env.insert("STDBUF", "L"); // see "man 3 setbuf"
+        dialog->setEnvironment(env);
+    }
+    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setWindowTitle("Unique Size Dialog");
+    dialog->setText("Are you sure that you want to uniquely size the following paths?");
+    dialog->setPaths(selectedPaths);
+    dialog->setAction(tmutilUniqueSizeVerb);
+    //dialog->setAsRoot(true);
+    dialog->show();
 }
 
 void MainWindow::restoreSelectedPaths()
@@ -492,6 +522,21 @@ void MainWindow::verifySelectedPaths()
 {
     const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
     qInfo() << "verifySelectedPaths called for" << selectedPaths;
+
+    const auto dialog = new PathActionDialog{this};
+    {
+        // Ensures output of tmutil shown as soon as available.
+        auto env = dialog->environment();
+        env.insert("STDBUF", "L"); // see "man 3 setbuf"
+        dialog->setEnvironment(env);
+    }
+    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setWindowTitle("Verify Dialog");
+    dialog->setText("Are you sure that you want to verify the following paths?");
+    dialog->setPaths(selectedPaths);
+    dialog->setAction(tmutilVerifyVerb);
+    //dialog->setAsRoot(true);
+    dialog->show();
 }
 
 void MainWindow::selectedPathsChanged()
@@ -499,6 +544,7 @@ void MainWindow::selectedPathsChanged()
     qInfo() << "selectedPathsChanged called!";
     const auto selectionIsEmpty = this->ui->mountPointsWidget->selectedItems().empty();
     this->ui->deletingPushButton->setDisabled(selectionIsEmpty);
+    this->ui->uniqueSizePushButton->setDisabled(selectionIsEmpty);
     this->ui->restoringPushButton->setDisabled(selectionIsEmpty);
     this->ui->verifyingPushButton->setDisabled(selectionIsEmpty);
 }

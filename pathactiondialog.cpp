@@ -9,6 +9,8 @@
 #include <QPushButton>
 #include <QProcess>
 #include <QStatusBar>
+#include <QSplitter>
+#include <QScrollBar>
 
 #include "pathactiondialog.h"
 
@@ -35,6 +37,7 @@ QString toHtmlList(const QStringList& strings)
 
 PathActionDialog::PathActionDialog(QWidget *parent):
     QDialog{parent},
+    splitter{new QSplitter{this}},
     textLabel{new QLabel{this}},
     pathsWidget{new QTextEdit{this}},
     yesButton{new QPushButton{"Yes", this}},
@@ -47,6 +50,9 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 {
     this->setWindowTitle(tr("Path Action Dialog"));
 
+    this->splitter->setOrientation(Qt::Vertical);
+    this->splitter->setChildrenCollapsible(false);
+
     this->textLabel->setFont([this](){
         QFont font = this->textLabel->font();
         font.setWeight(QFont::Bold);
@@ -57,6 +63,10 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->pathsWidget->setObjectName("pathsWidget");
     this->pathsWidget->setReadOnly(true);
     this->pathsWidget->setLineWrapMode(QTextEdit::NoWrap);
+    this->pathsWidget->setSizePolicy(
+        QSizePolicy::Preferred, QSizePolicy::Maximum);
+    this->pathsWidget->viewport()->setSizePolicy(
+        QSizePolicy::Preferred, QSizePolicy::Maximum);
 
     this->yesButton->setEnabled(false);
 
@@ -70,25 +80,52 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->outputWidget->setReadOnly(true);
     this->outputWidget->document()->setDefaultStyleSheet(
         "* {font-family: \"Andale Mono\";} .stdout {color:green;} .stderr {color:red;}");
+    this->outputWidget->setMinimumHeight(0);
+    this->outputWidget->setSizePolicy(
+        QSizePolicy::Preferred, QSizePolicy::Expanding);
+    this->outputWidget->viewport()->setMinimumHeight(0);
+    this->outputWidget->viewport()->setSizePolicy(
+        QSizePolicy::Preferred, QSizePolicy::Expanding);
 
     this->statusBar->showMessage("Awaiting confirmation of action.");
 
     this->setLayout([this](){
         auto *mainLayout = new QVBoxLayout;
         mainLayout->setObjectName("mainLayout");
-        mainLayout->addWidget(this->textLabel);
-        mainLayout->addWidget(this->pathsWidget);
-        mainLayout->addLayout([this](){
-            auto *choiceLayout = new QHBoxLayout;
-            choiceLayout->setObjectName("choiceLayout");
-            choiceLayout->addWidget(this->yesButton);
-            choiceLayout->addWidget(this->noButton);
-            choiceLayout->addWidget(this->stopButton);
-            choiceLayout->setAlignment(Qt::AlignCenter);
-            return choiceLayout;
-        }());
-        mainLayout->addWidget(this->outputWidget);
-        mainLayout->addWidget(this->statusBar);
+        {
+            auto *topFrame = new QFrame;
+            topFrame->setFrameShape(QFrame::NoFrame);
+            topFrame->setLayout([this]() -> QLayout* {
+                auto *frameLayout = new QVBoxLayout;
+                frameLayout->addWidget(this->textLabel);
+                frameLayout->addWidget(this->pathsWidget);
+                frameLayout->addLayout([this](){
+                    auto *layout = new QHBoxLayout;
+                    layout->setObjectName("choiceLayout");
+                    layout->addWidget(this->yesButton);
+                    layout->addWidget(this->noButton);
+                    layout->addWidget(this->stopButton);
+                    layout->setAlignment(Qt::AlignCenter);
+                    return layout;
+                }());
+                return frameLayout;
+            }());
+            topFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+            this->splitter->addWidget(topFrame);
+        }
+        {
+            auto *btmFrame = new QFrame;
+            btmFrame->setFrameShape(QFrame::NoFrame);
+            btmFrame->setLayout([this]() -> QLayout* {
+                auto *frameLayout = new QVBoxLayout;
+                frameLayout->addWidget(this->outputWidget);
+                frameLayout->addWidget(this->statusBar);
+                return frameLayout;
+            }());
+            btmFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+            this->splitter->addWidget(btmFrame);
+        }
+        mainLayout->addWidget(this->splitter);
         return mainLayout;
     }());
 
@@ -136,6 +173,11 @@ QString PathActionDialog::tmutilPath() const
     return this->tmuPath;
 }
 
+QString PathActionDialog::pathPrefix() const
+{
+    return this->pathPre;
+}
+
 int PathActionDialog::stopSignal() const noexcept
 {
     return this->stopSig;
@@ -150,6 +192,18 @@ void PathActionDialog::setPaths(const QStringList &paths)
 {
     this->pathList = paths;
     this->pathsWidget->setHtml(toHtmlList(paths));
+#if 1
+    const auto* doc = this->pathsWidget->document();
+    const auto* sb = this->pathsWidget->horizontalScrollBar();
+    const auto fm = QFontMetrics(this->pathsWidget->currentFont());
+    const auto margins = this->pathsWidget->contentsMargins();
+    const auto h = (doc->size().toSize().height()) +
+                   ((doc->documentMargin() + this->pathsWidget->frameWidth()) * 2) +
+                   margins.top() + margins.bottom() + (sb? sb->height(): 0);
+    qDebug() << "setPaths setting max h:" << h;
+    this->pathsWidget->setMaximumHeight(h);
+    this->pathsWidget->viewport()->setMaximumHeight(h);
+#endif
 }
 
 void PathActionDialog::setAction(const QString &action)
@@ -185,6 +239,11 @@ void PathActionDialog::setTmutilPath(const QString &path)
     this->tmuPath = path;
 }
 
+void PathActionDialog::setPathPrefix(const QString &prefix)
+{
+    this->pathPre = prefix;
+}
+
 void PathActionDialog::setStopSignal(int sig)
 {
     this->stopSig = sig;
@@ -211,7 +270,10 @@ void PathActionDialog::startAction()
     }
     argList << this->verb;
     for (const auto& path: pathList) {
-        argList << "-p" << path;
+        if (!this->pathPre.isEmpty()) {
+            argList << this->pathPre;
+        }
+        argList << path;
     }
     qInfo() << "startAction about to run:" << program << argList.join(' ');
 

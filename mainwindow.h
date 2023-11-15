@@ -39,6 +39,7 @@ public slots:
     void updateMountPointsFile(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
     void deleteSelectedPaths();
+    void uniqueSizeSelectedPaths();
     void restoreSelectedPaths();
     void verifySelectedPaths();
     void selectedPathsChanged();

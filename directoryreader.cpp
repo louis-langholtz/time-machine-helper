@@ -10,28 +10,8 @@
 namespace {
 
 static constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
-
-// Content of this attribute seems to be comma separated list, where
-// first element is one of the following:
-//   "SnapshotStorage","MachineStore", "Backup", "VolumeStore"
-static constexpr auto timeMachineMetaAttr =
-    "com.apple.timemachine.private.structure.metadata";
-
 static constexpr auto backupAttrPrefix = "com.apple.backup.";
-
 static constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
-
-// Machine level attributes...
-static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
-static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
-static constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
-static constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
-static constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
-static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
-
-// Volume level attributes...
-static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
-static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
 
 // From https://stackoverflow.com/a/236803/7410358
 template <typename Out>
@@ -57,7 +37,8 @@ QMap<QString, QByteArray> getInterestingAttrs(
     auto attrs = QMap<QString, QByteArray>{};
     const auto size = listxattr(path.c_str(), nullptr, 0, 0);
     if (size < 0) {
-        qWarning() << "unable to get size for listing attrs for:" << path.c_str();
+        qWarning() << "unable to get size for listing attrs for:"
+                   << path.c_str();
         return {};
     }
     if (size == 0) {
@@ -91,8 +72,8 @@ QMap<QString, QByteArray> getInterestingAttrs(
             continue;
         }
         QByteArray buffer(qsizetype(reserveSize), Qt::Initialization{});
-        const auto actualSize =
-            getxattr(path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
+        const auto actualSize = getxattr(
+            path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
         if (actualSize < 0) {
             continue;
         }
@@ -117,9 +98,8 @@ void DirectoryReader::run() {
         item->data(0, Qt::ItemDataRole::UserRole).toString();
     const auto dirPath = std::filesystem::path(pathName.toStdString());
     std::error_code ec;
-    const auto it = directory_iterator{dirPath,
-                                       directory_options::skip_permission_denied,
-                                       ec};
+    const auto options = directory_options::skip_permission_denied;
+    const auto it = directory_iterator{dirPath, options, ec};
     if (ec) {
         emit ended(this->item, ec);
         return;
@@ -131,9 +111,9 @@ void DirectoryReader::run() {
         if (filename.compare(".") == 0 || filename.compare("..") == 0) {
             continue;
         }
-        auto hasTimeMachinceAttrs = false;
-        const auto subdirAttrs = getInterestingAttrs(path, hasTimeMachinceAttrs);
-        if (!hasTimeMachinceAttrs) {
+        auto hasTmAttrs = false;
+        const auto subdirAttrs = getInterestingAttrs(path, hasTmAttrs);
+        if (!hasTmAttrs) {
             continue;
         }
         const auto status = dirEntryIter.status(ec);
