@@ -2,6 +2,7 @@
 
 #include <csignal>
 
+#include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -48,6 +49,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     env{QProcessEnvironment::InheritFromParent},
     stopSig{SIGINT} // tmutil handles SIGINT most gracefully.
 {
+    this->setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle(tr("Path Action Dialog"));
 
     this->splitter->setOrientation(Qt::Vertical);
@@ -133,6 +135,28 @@ PathActionDialog::PathActionDialog(QWidget *parent):
             this, &PathActionDialog::close);
     connect(this->stopButton, &QPushButton::clicked,
             this, &PathActionDialog::stopAction);
+}
+
+PathActionDialog::~PathActionDialog()
+{
+    qDebug() << "~PathActionDialog called";
+}
+
+void PathActionDialog::closeEvent(QCloseEvent *event)
+{
+    if (event && this->process) {
+        qDebug() << "PathActionDialog::closeEvent ignoring";
+        event->ignore();
+    }
+}
+
+void PathActionDialog::reject()
+{
+    if (this->process) {
+        qDebug() << "PathActionDialog rejecting reject on account of process";
+        return;
+    }
+    this->close();
 }
 
 QString PathActionDialog::errorString(
@@ -356,6 +380,8 @@ void PathActionDialog::setProcessFinished(int code, int status)
                 .arg(code).arg(errorString(noExplanationMsg)));
         break;
     }
+    delete this->process;
+    this->process = nullptr;
 }
 
 void PathActionDialog::setErrorOccurred(int error)

@@ -17,6 +17,10 @@ class PathActionDialog : public QDialog
     Q_OBJECT
 public:
     explicit PathActionDialog(QWidget *parent = nullptr);
+    ~PathActionDialog() override;
+
+    void closeEvent(QCloseEvent *event) override;
+    void reject() override;
 
     QString errorString(
         const QString& fallback = {}) const;
