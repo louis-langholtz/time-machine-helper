@@ -16,17 +16,6 @@ static constexpr auto tmutilDestInfoVerb = "destinationinfo";
 static constexpr auto tmutilXmlOption    = "-X";
 constexpr auto noExplanationMsg = "no explanation";
 
-template <class T>
-std::optional<T> get(const plist_dict& map, const std::string& key)
-{
-    if (const auto it = map.find(key); it != map.end()) {
-        if (const auto p = std::get_if<T>(&it->second.value)) {
-            return {*p};
-        }
-    }
-    return {};
-}
-
 auto toPlistDictVector(const plist_array& array)
     -> std::vector<plist_dict>
 {
@@ -57,6 +46,48 @@ void DestinationsWidget::queryDestinations()
                    QStringList() << tmutilDestInfoVerb << tmutilXmlOption);
 }
 
+void DestinationsWidget::handleStatus(const plist_object &plist)
+{
+    // display plist output from "tmutil status -X"
+    qInfo() << "handleStatusPlist called!";
+    const auto *dict = std::get_if<plist_dict>(&plist.value);
+    if (!dict) {
+        qWarning() << "handleStatusPlist: plist value not dict!";
+        return;
+    }
+
+    const auto clientID = get<plist_string>(*dict, "ClientID");
+    qDebug() << "clientID:" << clientID.value_or("<none>");
+
+    // When running...
+    const auto phase = get<plist_string>(*dict, "BackupPhase");
+    const auto destID = get<plist_string>(*dict, "DestinationID");
+    const auto destMP = get<plist_string>(*dict, "DestinationMountPoint");
+    const auto fractOfProg = get<plist_real>(*dict, "FractionOfProgressBar");
+    const auto prog = get<plist_dict>(*dict, "Progress");
+    const auto runningTrue = get<plist_true>(*dict, "Running");
+
+    // When not running...
+    const auto percent = get<plist_real>(*dict, "Percent");
+    const auto runningFalse = get<plist_false>(*dict, "Running");
+
+    if (destMP) {
+        const auto rows = this->rowCount();
+        for (auto r = 0; r < rows; ++r) {
+            const auto cell = this->item(r, 3);
+            if (!cell || (cell->text() != destMP->c_str())) {
+                continue;
+            }
+            auto item = this->item(r, 5);
+            if (!item) {
+                item = new QTableWidgetItem;
+                this->setItem(r, 5, item);
+            }
+            item->setText(QString::fromStdString(phase.value_or("")));
+        }
+    }
+}
+
 void DestinationsWidget::handleError(const QString& text)
 {
     const auto status =
@@ -65,7 +96,7 @@ void DestinationsWidget::handleError(const QString& text)
                  tmutilDestInfoVerb,
                  tmutilXmlOption,
                  text);
-    emit gotStatus(status);
+    emit gotError(status);
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
     msgBox.setText("Got process error when trying to query system destinations.");

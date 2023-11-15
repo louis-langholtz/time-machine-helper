@@ -25,6 +25,7 @@
 #include "directoryreader.h"
 #include "mainwindow.h"
 #include "pathactiondialog.h"
+#include "plistprocess.h"
 
 namespace {
 
@@ -57,17 +58,6 @@ static constexpr auto tmutilDeleteVerb     = "delete";
 static constexpr auto tmutilVerifyVerb     = "verifychecksums";
 static constexpr auto tmutilUniqueSizeVerb = "uniquesize";
 static constexpr auto tmutilStatusVerb     = "status";
-
-template <class T>
-std::optional<T> get(const plist_dict& map, const std::string& key)
-{
-    if (const auto it = map.find(key); it != map.end()) {
-        if (const auto p = std::get_if<T>(&it->second.value)) {
-            return {*p};
-        }
-    }
-    return {};
-}
 
 struct tmutil_destination {
     std::string id;
@@ -250,7 +240,7 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::updateMountPointsView);
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemExpanded,
             this, &MainWindow::mountPointItemExpanded);
-    connect(this->ui->destinationsWidget, &DestinationsWidget::gotStatus,
+    connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
             this, &MainWindow::showStatus);
 
     this->timer->start(1000);
@@ -440,12 +430,6 @@ void MainWindow::resizeMountPointsColumns()
     this->ui->mountPointsWidget->resizeColumnToContents(6);
 }
 
-void MainWindow::updateBackupStatusWidget(const plist_object &plist)
-{
-    // display plist output from "tmutil status -X"
-    qInfo() << "updateBackupStatusWidget called!";
-}
-
 void MainWindow::updateMountPointsDir(const QString &path)
 {
     qInfo() << "updateMountPointsDir called for path:" << path;
@@ -569,6 +553,14 @@ void MainWindow::showAboutDialog()
 void MainWindow::checkTmStatus()
 {
     // need to call "tmutil status -X"
+    auto *process = new PlistProcess{this};
+    connect(process, &PlistProcess::gotPlist,
+            this->ui->destinationsWidget,
+            &DestinationsWidget::handleStatus);
+    connect(process, &PlistProcess::finished,
+            process, &PlistProcess::deleteLater);
+    process->start(this->tmUtilPath,
+                   QStringList() << tmutilStatusVerb << "-X");
 }
 
 void MainWindow::showStatus(const QString& status)

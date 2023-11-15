@@ -1,3 +1,4 @@
+#include <QDateTime>
 #include <QtDebug>
 #include <QProcess>
 #include <QXmlStreamReader>
@@ -7,10 +8,17 @@
 
 namespace {
 
-plist_element_type toPlistElementType(const QStringView& string)
+auto toPlistElementType(const QStringView& string)
+    -> plist_element_type
 {
     if (string.compare("array") == 0) {
         return plist_element_type::array;
+    }
+    if (string.compare("data") == 0) {
+        return plist_element_type::data;
+    }
+    if (string.compare("date") == 0) {
+        return plist_element_type::date;
     }
     if (string.compare("dict") == 0) {
         return plist_element_type::dict;
@@ -37,6 +45,26 @@ plist_element_type toPlistElementType(const QStringView& string)
         return plist_element_type::plist;
     }
     return plist_element_type::none;
+}
+
+auto toPlistData(const QString& string)
+    -> plist_data
+{
+    const auto ba = QByteArray::fromBase64(string.toUtf8());
+    return plist_data(ba.begin(), ba.end());
+}
+
+auto toPlistDate(const QString& string)
+    -> plist_date
+{
+    // Ex: "2023-11-15T15:54:30Z"
+    // From https://www.apple.com/DTDs/PropertyList-1.0.dtd:
+    // Contents should conform to a subset of ISO 8601 (in
+    // particular, YYYY '-' MM '-' DD 'T' HH ':' MM ':' SS 'Z'.
+    // Smaller units may be omitted with a loss of precision)
+    const auto d = QDateTime::fromString(string, Qt::ISODate);
+    const auto t = std::chrono::system_clock::from_time_t(d.toSecsSinceEpoch());
+    return std::chrono::time_point<std::chrono::system_clock>{t};
 }
 
 }
@@ -125,12 +153,10 @@ void PlistProcess::readMore()
             case plist_element_type::dict:
                 this->awaiting_handle.set_value(plist_dict{});
                 break;
+            case plist_element_type::data:
+            case plist_element_type::date:
             case plist_element_type::so_true:
-                this->awaiting_handle.set_value(plist_true{});
-                break;
             case plist_element_type::so_false:
-                this->awaiting_handle.set_value(plist_false{});
-                break;
             case plist_element_type::real:
             case plist_element_type::integer:
             case plist_element_type::string:
@@ -152,9 +178,19 @@ void PlistProcess::readMore()
                 break;
             case plist_element_type::array:
             case plist_element_type::dict:
-            case plist_element_type::so_true:
-            case plist_element_type::so_false:
                 this->awaiting_handle.set_value(plist_variant{});
+                break;
+            case plist_element_type::data:
+                this->awaiting_handle.set_value(toPlistData(currentText));
+                break;
+            case plist_element_type::date:
+                this->awaiting_handle.set_value(toPlistDate(currentText));
+                break;
+            case plist_element_type::so_true:
+                this->awaiting_handle.set_value(plist_true{});
+                break;
+            case plist_element_type::so_false:
+                this->awaiting_handle.set_value(plist_false{});
                 break;
             case plist_element_type::real:
                 this->awaiting_handle

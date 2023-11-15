@@ -17,10 +17,11 @@ public:
 
 public slots:
     void queryDestinations();
+    void handleStatus(const plist_object &plist);
 
 signals:
     void gotPaths(const std::vector<std::string>& paths);
-    void gotStatus(const QString& status);
+    void gotError(const QString& status);
 
 private slots:
     void updateUI(const plist_object &plist);

@@ -12,8 +12,6 @@
 #include <QString>
 #include <QVariant>
 
-#include "plist_object.h"
-
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -33,7 +31,6 @@ public:
 
 public slots:
     void resizeMountPointsColumns();
-    void updateBackupStatusWidget(const plist_object& plist);
     void updateMountPointsView(const std::vector<std::string>& paths);
     void updateMountPointsDir(const QString& path);
     void updateMountPointsFile(const QString& path);

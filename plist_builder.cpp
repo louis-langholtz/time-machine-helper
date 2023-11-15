@@ -50,6 +50,8 @@ coroutine_task<plist_object> plist_builder(
         result.value = co_await plist_dict_builder(awaiting_handle);
         break;
     }
+    case plist_element_type::data:
+    case plist_element_type::date:
     case plist_element_type::so_true:
     case plist_element_type::so_false:
     case plist_element_type::real:
