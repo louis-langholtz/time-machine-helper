@@ -7,9 +7,17 @@ This is a macOS specific application.
 
 This project minimally needs the following:
 
-- macOS 14 (or newer).
-- C++20 (or higher).
-- coroutine library support.
+- [macOS Sonoma (version 14)](https://www.apple.com/macos/sonoma/) (or newer).
+- [C++20](https://en.wikipedia.org/wiki/C++20) (or higher).
+- [coroutine library support](https://en.cppreference.com/w/cpp/coroutine).
+
+Additionally, to use administrative commands like to delete backups, the `sudo` system needs to be setup to allow the application running user to run the `/usr/bin/tmutil` program as root.
+
+For more info on `sudo`, see:
+
+```sh
+man 8 sudo
+```
 
 ## Please Note
 
