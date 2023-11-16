@@ -15,6 +15,8 @@ public:
     explicit DestinationsWidget(
         QWidget *parent = nullptr);
 
+    QTableWidgetItem *createdItem(int row, int column);
+
 public slots:
     void queryDestinations();
     void handleStatus(const plist_object &plist);

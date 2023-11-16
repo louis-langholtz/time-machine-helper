@@ -33,6 +33,17 @@ DestinationsWidget::DestinationsWidget(QWidget *parent)
 {
 }
 
+QTableWidgetItem *DestinationsWidget::createdItem(
+    int row, int column)
+{
+    auto i = this->item(row, column);
+    if (!i) {
+        i = new QTableWidgetItem;
+        this->setItem(row, column, i);
+    }
+    return i;
+}
+
 void DestinationsWidget::queryDestinations()
 {
     auto process = new PlistProcess(this);
@@ -112,8 +123,6 @@ void DestinationsWidget::handleError(const QString& text)
 
 void DestinationsWidget::updateUI(const plist_object &plist)
 {
-    this->clearContents();
-
     const auto destinations = toPlistDictVector(
         get<plist_array>(std::get<plist_dict>(plist.value),
                          "Destinations").value());
@@ -125,65 +134,58 @@ void DestinationsWidget::updateUI(const plist_object &plist)
     auto row = 0;
     for (const auto& d: destinations) {
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 0);
             const auto v = get<std::string>(d, "Name");
             item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 0, item);
         }
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 1);
             const auto v = get<std::string>(d, "ID");
             item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 1, item);
         }
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 2);
             const auto v = get<std::string>(d, "Kind");
             item->setText(QString::fromStdString(v.value_or("")));
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 2, item);
         }
         const auto mp = get<std::string>(d, "MountPoint");
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 3);
             item->setText(QString::fromStdString(mp.value_or("")));
             item->setTextAlignment(Qt::AlignLeft|Qt::AlignVCenter);
             item->setFont(font);
             item->setFlags(itemFlags);
-            this->setItem(row, 3, item);
         }
         auto ec = std::error_code{};
         const auto si = mp? std::filesystem::space(*mp, ec): std::filesystem::space_info{};
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 4);
             if (mp && !ec) {
                 const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
                 item->setText(QString::number(capacityInGb, 'f', 2));
             }
             item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 4, item);
         }
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 5);
             if (mp && !ec) {
                 const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
                 item->setText(QString::number(freeInGb, 'f', 2));
             }
             item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 5, item);
         }
         {
-            const auto item = new QTableWidgetItem;
+            const auto item = this->createdItem(row, 6);
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(itemFlags);
-            this->setItem(row, 6, item);
         }
         if (mp) {
             mountPoints.push_back(*mp);
