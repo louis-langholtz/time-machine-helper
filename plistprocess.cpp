@@ -129,7 +129,6 @@ void PlistProcess::readMore()
         case QXmlStreamReader::NoToken:
             break;
         case QXmlStreamReader::Invalid:
-            qWarning() << "invalid token type!";
             break;
         case QXmlStreamReader::StartDocument:
             break;
