@@ -35,6 +35,7 @@ public slots:
     void updateMountPointsDir(const QString& path);
     void updateMountPointsFile(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
+    void mountPointItemCollapsed(QTreeWidgetItem *item);
     void deleteSelectedPaths();
     void uniqueSizeSelectedPaths();
     void restoreSelectedPaths();

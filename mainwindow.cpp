@@ -240,6 +240,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::updateMountPointsView);
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemExpanded,
             this, &MainWindow::mountPointItemExpanded);
+    connect(this->ui->mountPointsWidget, &QTreeWidget::itemCollapsed,
+            this, &MainWindow::mountPointItemCollapsed);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
             this, &MainWindow::showStatus);
 
@@ -418,6 +420,12 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
     connect(workerThread, &DirectoryReader::finished,
             workerThread, &QObject::deleteLater);
     workerThread->start();
+}
+
+void MainWindow::mountPointItemCollapsed(QTreeWidgetItem *item)
+{
+    qDebug() << "got mount point collapsed signal"
+             << "for item:" << item->text(0);
 }
 
 void MainWindow::resizeMountPointsColumns()
