@@ -2,6 +2,7 @@
 #include <coroutine>
 #include <optional>
 #include <utility>
+#include <set>
 #include <string>
 #include <vector>
 #include <iterator>
@@ -166,6 +167,51 @@ QString pathTooltip(const QMap<QString, QByteArray>& attrs)
     return {};
 }
 
+auto findTopLevelItem(const QTreeWidget& tree, const QString& key)
+    -> QTreeWidgetItem*
+{
+    const auto count = tree.topLevelItemCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto item = tree.topLevelItem(i);
+        if (item->text(0) == key) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+auto findAddableTopLevelItems(
+    const QTreeWidget& tree,
+    const std::vector<std::string>& names) -> std::set<QString>
+{
+    auto result = std::set<QString>{};
+    for (const auto& name: names) {
+        const auto key = QString::fromStdString(name);
+        const auto found = findTopLevelItem(tree, key);
+        if (!found) {
+            result.insert(key);
+        }
+    }
+    return result;
+}
+
+auto findDeletableTopLevelItems(
+    const QTreeWidget& tree,
+    const std::vector<std::string>& names) -> std::set<QString>
+{
+    auto result = std::set<QString>{};
+    const auto count = tree.topLevelItemCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto key = tree.topLevelItem(i)->text(0);
+        const auto it = std::find(names.begin(), names.end(),
+                                  key.toStdString());
+        if (it == names.end()) {
+            result.insert(key);
+        }
+    }
+    return result;
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -235,6 +281,8 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedPaths);
     connect(this->timer, &QTimer::timeout,
+            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+    connect(this->timer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
             this, &MainWindow::updateMountPointsView);
@@ -245,9 +293,10 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
             this, &MainWindow::showStatus);
 
-    this->timer->start(1000);
-
-    this->ui->destinationsWidget->queryDestinations();
+    QTimer::singleShot(0,
+                       this->ui->destinationsWidget,
+                       &DestinationsWidget::queryDestinations);
+    this->timer->start(2500);
 }
 
 MainWindow::~MainWindow()
@@ -257,19 +306,30 @@ MainWindow::~MainWindow()
 
 void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
 {
-    qInfo() << "updateMountPointsView called with" << paths.size();
-    constexpr auto policy = QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
-    for (const auto& mp: paths) {
-        // mp might be like "/Volumes/My Backup Disk"
-        qDebug() << "mountPoint path=" << mp;
-        const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
-        item->setChildIndicatorPolicy(policy);
-        item->setText(0, mp.c_str());
-        item->setData(0, Qt::ItemDataRole::UserRole, QString(mp.c_str()));
-        item->setFont(0, pathFont);
-        item->setWhatsThis(0, QString("This is the file system info for '%1'")
-                                  .arg(mp.c_str()));
-        this->ui->mountPointsWidget->addTopLevelItem(item);
+    {
+        const auto pathsDel = findDeletableTopLevelItems(
+            *(this->ui->mountPointsWidget), paths);
+        for (const auto& path: pathsDel) {
+            qDebug() << "removing old mountPoint path=" << path;
+            delete findTopLevelItem(*(this->ui->mountPointsWidget), path);
+        }
+    }
+    {
+        constexpr auto policy = QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+        const auto pathsAdd = findAddableTopLevelItems(
+            *(this->ui->mountPointsWidget), paths);
+        for (const auto& path: pathsAdd) {
+            // mp might be like "/Volumes/My Backup Disk"
+            qDebug() << "adding new mountPoint path=" << path;
+            const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
+            item->setChildIndicatorPolicy(policy);
+            item->setText(0, path);
+            item->setData(0, Qt::ItemDataRole::UserRole, path);
+            item->setFont(0, pathFont);
+            item->setWhatsThis(0, QString("This is the file system info for '%1'")
+                                      .arg(path));
+            this->ui->mountPointsWidget->addTopLevelItem(item);
+        }
     }
     this->ui->mountPointsWidget->resizeColumnToContents(0);
 }
