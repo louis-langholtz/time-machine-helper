@@ -62,6 +62,7 @@ private:
     QPushButton* yesButton{};
     QPushButton* noButton{};
     QPushButton* stopButton{};
+    QPushButton* dismissButton{};
     QTextEdit* outputWidget{};
     QStatusBar* statusBar{};
     QProcess* process{};

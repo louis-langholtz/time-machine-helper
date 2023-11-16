@@ -44,6 +44,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     yesButton{new QPushButton{"Yes", this}},
     noButton{new QPushButton{"No", this}},
     stopButton{new QPushButton{"Stop", this}},
+    dismissButton{new QPushButton{"Dismiss", this}},
     outputWidget{new QTextEdit{this}},
     statusBar{new QStatusBar{this}},
     env{QProcessEnvironment::InheritFromParent},
@@ -77,6 +78,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 
     this->stopButton->setEnabled(false);
 
+    this->dismissButton->setEnabled(false);
+
     this->outputWidget->setObjectName("outputWidget");
     this->outputWidget->setLineWrapMode(QTextEdit::NoWrap);
     this->outputWidget->setReadOnly(true);
@@ -95,9 +98,9 @@ PathActionDialog::PathActionDialog(QWidget *parent):
         auto *mainLayout = new QVBoxLayout;
         mainLayout->setObjectName("mainLayout");
         {
-            auto *topFrame = new QFrame;
-            topFrame->setFrameShape(QFrame::NoFrame);
-            topFrame->setLayout([this]() -> QLayout* {
+            auto *frame = new QFrame;
+            frame->setFrameStyle(QFrame::StyledPanel);
+            frame->setLayout([this]() -> QLayout* {
                 auto *frameLayout = new QVBoxLayout;
                 frameLayout->addWidget(this->textLabel);
                 frameLayout->addWidget(this->pathsWidget);
@@ -107,25 +110,26 @@ PathActionDialog::PathActionDialog(QWidget *parent):
                     layout->addWidget(this->yesButton);
                     layout->addWidget(this->noButton);
                     layout->addWidget(this->stopButton);
+                    layout->addWidget(this->dismissButton);
                     layout->setAlignment(Qt::AlignCenter);
                     return layout;
                 }());
                 return frameLayout;
             }());
-            topFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-            this->splitter->addWidget(topFrame);
+            frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+            this->splitter->addWidget(frame);
         }
         {
-            auto *btmFrame = new QFrame;
-            btmFrame->setFrameShape(QFrame::NoFrame);
-            btmFrame->setLayout([this]() -> QLayout* {
+            auto *frame = new QFrame;
+            frame->setFrameStyle(QFrame::StyledPanel);
+            frame->setLayout([this]() -> QLayout* {
                 auto *frameLayout = new QVBoxLayout;
                 frameLayout->addWidget(this->outputWidget);
                 frameLayout->addWidget(this->statusBar);
                 return frameLayout;
             }());
-            btmFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-            this->splitter->addWidget(btmFrame);
+            frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+            this->splitter->addWidget(frame);
         }
         mainLayout->addWidget(this->splitter);
         return mainLayout;
@@ -135,6 +139,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
             this, &PathActionDialog::close);
     connect(this->stopButton, &QPushButton::clicked,
             this, &PathActionDialog::stopAction);
+    connect(this->dismissButton, &QPushButton::clicked,
+            this, &PathActionDialog::close);
 }
 
 PathActionDialog::~PathActionDialog()
@@ -313,6 +319,7 @@ void PathActionDialog::startAction()
     connect(this->process, &QProcess::readyReadStandardError,
             this, &PathActionDialog::readProcessError);
     this->stopButton->setEnabled(true);
+    this->dismissButton->setEnabled(false);
     this->statusBar->showMessage("Starting process");
     this->process->setProcessEnvironment(this->env);
     this->process->start(program, argList, openMode);
@@ -370,6 +377,7 @@ void PathActionDialog::setProcessFinished(int code, int status)
             << "code:" << code
             << "status:" << status;
     this->stopButton->setEnabled(false);
+    this->dismissButton->setEnabled(true);
     switch (code) {
     case EXIT_SUCCESS:
         this->statusBar->showMessage("Process finished.");
