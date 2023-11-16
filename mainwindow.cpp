@@ -262,9 +262,6 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
     for (const auto& mp: paths) {
         // mp might be like "/Volumes/My Backup Disk"
         qDebug() << "mountPoint path=" << mp;
-        const auto si = std::filesystem::space(mp);
-        const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
-        const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
         const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
         item->setChildIndicatorPolicy(policy);
         item->setText(0, mp.c_str());
@@ -272,14 +269,6 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
         item->setFont(0, pathFont);
         item->setWhatsThis(0, QString("This is the file system info for '%1'")
                                   .arg(mp.c_str()));
-        item->setText(1, QString::number(capacityInGb, 'f', 2));
-        item->setTextAlignment(1, Qt::AlignRight);
-        item->setToolTip(1, QString("Capacity of this filesystem (%1 bytes).")
-                                .arg(si.capacity));
-        item->setText(2, QString::number(freeInGb, 'f', 2));
-        item->setTextAlignment(2, Qt::AlignRight);
-        item->setToolTip(2, QString("Free space of this filesystem (%1 bytes).")
-                                .arg(si.free));
         this->ui->mountPointsWidget->addTopLevelItem(item);
     }
     this->ui->mountPointsWidget->resizeColumnToContents(0);
@@ -339,51 +328,54 @@ void MainWindow::addDirEntry(
     using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
 
-    const auto childItem = new QTreeWidgetItem(parent);
+    constexpr auto backupsCountCol = 1;
+    auto col = 0;
+    const auto item = new QTreeWidgetItem(parent);
 
-    childItem->setTextAlignment(0, Qt::AlignLeft|Qt::AlignVCenter);
-    childItem->setFont(0, this->pathFont);
-    childItem->setText(0, QString::fromStdString(path.filename().string()));
-    childItem->setData(0, Qt::ItemDataRole::UserRole, QString(path.c_str()));
-    childItem->setToolTip(0, pathTooltip(attrs));
+    item->setTextAlignment(col, Qt::AlignLeft|Qt::AlignVCenter);
+    item->setFont(col, this->pathFont);
+    item->setText(col, QString::fromStdString(path.filename().string()));
+    item->setData(col, Qt::ItemDataRole::UserRole, QString(path.c_str()));
+    item->setToolTip(col, pathTooltip(attrs));
 
-    childItem->setTextAlignment(1, Qt::AlignRight);
-
-    childItem->setTextAlignment(2, Qt::AlignRight);
-
-    childItem->setTextAlignment(3, Qt::AlignRight);
+    ++col;
+    item->setTextAlignment(col, Qt::AlignRight);
     if (get(attrs, machineUuidAttr)) {
-        childItem->setText(3, "?");
-        childItem->setToolTip(3, "Expand to get value.");
+        item->setText(col, "?");
+        item->setToolTip(col, "Expand to get value.");
     }
 
     auto isBackup = false;
 
-    childItem->setTextAlignment(4, Qt::AlignRight);
+    ++col;
+    item->setTextAlignment(col, Qt::AlignRight);
     if (const auto v = get(attrs, snapshotTypeAttr)) {
         isBackup = true;
-        childItem->setText(4, QString(*v));
+        item->setText(col, QString(*v));
     }
 
-    childItem->setTextAlignment(5, Qt::AlignRight);
+    ++col;
+    item->setTextAlignment(col, Qt::AlignRight);
     if (const auto v = get(attrs, totalBytesCopiedAttr)) {
         isBackup = true;
         auto okay = false;
         const auto bytes = QString(*v).toLongLong(&okay);
         if (okay) {
             const auto megaBytes = double(bytes) / (1000 * 1000);
-            childItem->setText(5, QString::number(megaBytes, 'f', 2));
+            item->setText(col, QString::number(megaBytes, 'f', 2));
         }
     }
 
-    childItem->setTextAlignment(6, Qt::AlignCenter);
+    ++col;
+    item->setTextAlignment(col, Qt::AlignCenter);
     if (const auto v = get(attrs, fileSystemTypeAttr)) {
-        childItem->setText(6, QString(*v));
+        item->setText(col, QString(*v));
     }
 
-    childItem->setTextAlignment(7, Qt::AlignRight);
+    ++col;
+    item->setTextAlignment(col, Qt::AlignRight);
     if (const auto v = get(attrs, volumeBytesUsedAttr)) {
-        childItem->setText(7, QString(*v));
+        item->setText(col, QString(*v));
     }
 
     const auto indicatorPolicy =
@@ -394,13 +386,13 @@ void MainWindow::addDirEntry(
     // Following may not work. For more info, see:
     // https://stackoverflow.com/q/30088705/7410358
     // https://bugreports.qt.io/browse/QTBUG-28312
-    childItem->setChildIndicatorPolicy(indicatorPolicy);
+    item->setChildIndicatorPolicy(indicatorPolicy);
 
-    parent->addChild(childItem);
+    parent->addChild(item);
     if (isBackup) {
         auto ok = false;
-        const auto t = parent->text(3);
-        parent->setText(3, QString::number(t.toLongLong(&ok) + 1));
+        const auto t = parent->text(backupsCountCol);
+        parent->setText(backupsCountCol, QString::number(t.toLongLong(&ok) + 1));
     }
 }
 

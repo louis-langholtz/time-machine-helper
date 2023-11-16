@@ -152,28 +152,6 @@
         </column>
         <column>
          <property name="text">
-          <string>Capacity (GB)</string>
-         </property>
-         <property name="toolTip">
-          <string>Capacity of the filesystem in gigabytes.</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Free (GB)</string>
-         </property>
-         <property name="toolTip">
-          <string>Free space of the filesystem in gigabytes.</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
           <string>Backups</string>
          </property>
          <property name="textAlignment">
