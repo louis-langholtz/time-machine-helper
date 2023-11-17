@@ -31,7 +31,8 @@ public:
 
 public slots:
     void resizeMountPointsColumns();
-    void updateMountPointsView(const std::vector<std::string>& paths);
+    void updateMountPointsView(
+        const std::vector<std::string>& paths);
     void updateMountPointsDir(const QString& path);
     void updateMountPointsFile(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
@@ -42,7 +43,8 @@ public slots:
     void verifySelectedPaths();
     void selectedPathsChanged();
     void showAboutDialog();
-    void reportDir(QTreeWidgetItem *item, std::error_code ec);
+    void reportDir(QTreeWidgetItem *item,
+                   std::error_code ec);
     void addDirEntry(QTreeWidgetItem *item,
                      const QMap<QString, QByteArray>& attrs,
                      const std::filesystem::path& path,

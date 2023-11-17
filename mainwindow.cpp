@@ -60,6 +60,8 @@ static constexpr auto tmutilVerifyVerb     = "verifychecksums";
 static constexpr auto tmutilUniqueSizeVerb = "uniquesize";
 static constexpr auto tmutilStatusVerb     = "status";
 
+constexpr auto backupsCountCol = 1;
+
 struct tmutil_destination {
     std::string id;
     std::string name;
@@ -331,7 +333,6 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
             this->ui->mountPointsWidget->addTopLevelItem(item);
         }
     }
-    this->ui->mountPointsWidget->resizeColumnToContents(0);
 }
 
 void MainWindow::reportDir(QTreeWidgetItem *item,
@@ -388,10 +389,8 @@ void MainWindow::addDirEntry(
     using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
 
-    constexpr auto backupsCountCol = 1;
     auto col = 0;
-    const auto item = new QTreeWidgetItem(parent);
-
+    const auto item = new QTreeWidgetItem;
     item->setTextAlignment(col, Qt::AlignLeft|Qt::AlignVCenter);
     item->setFont(col, this->pathFont);
     item->setText(col, QString::fromStdString(path.filename().string()));
@@ -460,8 +459,9 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
 {
     qDebug() << "got mount point expanded signal"
              << "for item:" << item->text(0);
-    for (const auto* child: item->takeChildren()) {
-        delete child;
+    const auto backupsCount = item->text(backupsCountCol);
+    if (!backupsCount.isEmpty()) {
+        item->setText(backupsCountCol, "?");
     }
 
     DirectoryReader *workerThread = new DirectoryReader(item, this);
@@ -478,6 +478,9 @@ void MainWindow::mountPointItemCollapsed(QTreeWidgetItem *item)
 {
     qDebug() << "got mount point collapsed signal"
              << "for item:" << item->text(0);
+    for (const auto* child: item->takeChildren()) {
+        delete child;
+    }
 }
 
 void MainWindow::resizeMountPointsColumns()
