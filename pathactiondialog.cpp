@@ -1,4 +1,4 @@
-#include <unistd.h> // for isatty
+#include <unistd.h> // for isatty, setsid
 
 #include <csignal>
 
@@ -12,6 +12,7 @@
 #include <QStatusBar>
 #include <QSplitter>
 #include <QScrollBar>
+#include <QTimer>
 
 #include "pathactiondialog.h"
 
@@ -290,7 +291,6 @@ void PathActionDialog::startAction()
 
     auto argList = QStringList();
     if (this->withAdmin) {
-        //argList << "--preserve-env";
         if (this->askPass) {
             argList << "--askpass";
         }
@@ -329,11 +329,15 @@ void PathActionDialog::stopAction()
 {
     qDebug() << "stopAction called for:" << this->verb;
     if (this->process && this->process->state() == QProcess::Running) {
-        qDebug() << "stopAction kill for:" << this->verb;
+        qDebug() << "stopAction kill with:"
+                 << this->stopSig
+                 << this->verb;
         const auto res = ::kill(this->process->processId(), this->stopSig);
         if (res == -1) {
             qWarning() << "kill failed:" << strerror(errno);
         }
+        QTimer::singleShot(1000, this->process, &QProcess::terminate);
+        QTimer::singleShot(2000, this->process, &QProcess::kill);
     }
 }
 
