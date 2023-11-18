@@ -30,6 +30,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         directoryreader.h directoryreader.cpp
         destinationswidget.h destinationswidget.cpp
         plistprocess.h plistprocess.cpp
+        settingsdialog.h settingsdialog.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET time-machine-helper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
