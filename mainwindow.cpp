@@ -257,7 +257,7 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->actionAbout, &QAction::triggered,
             this, &MainWindow::showAboutDialog);
     connect(this->ui->actionSettings, &QAction::triggered,
-            this, &MainWindow::showPreferencesDialog);
+            this, &MainWindow::showSettingsDialog);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
             this, &MainWindow::updateMountPointsDir);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::fileChanged,
@@ -614,7 +614,7 @@ void MainWindow::showAboutDialog()
     QMessageBox::about(this, tr("About"), text);
 }
 
-void MainWindow::showPreferencesDialog()
+void MainWindow::showSettingsDialog()
 {
     qDebug() << "showPreferencesDialog called";
     const auto dialog = new SettingsDialog{this};

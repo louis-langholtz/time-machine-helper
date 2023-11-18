@@ -43,7 +43,7 @@ public slots:
     void verifySelectedPaths();
     void selectedPathsChanged();
     void showAboutDialog();
-    void showPreferencesDialog();
+    void showSettingsDialog();
     void reportDir(QTreeWidgetItem *item,
                    std::error_code ec);
     void addDirEntry(QTreeWidgetItem *item,
