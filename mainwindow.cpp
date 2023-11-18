@@ -11,7 +11,6 @@
 #include <QObject>
 #include <QTreeWidgetItem>
 #include <QMessageBox>
-#include <QSettings>
 #include <QFileInfo>
 #include <QStringView>
 #include <QFileSystemModel>
@@ -27,6 +26,7 @@
 #include "mainwindow.h"
 #include "pathactiondialog.h"
 #include "plistprocess.h"
+#include "settingsdialog.h"
 
 namespace {
 
@@ -48,8 +48,6 @@ static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalByt
 static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
 static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
 
-static constexpr auto tmutilSettingsKey = "tmutil_path";
-static constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
 static constexpr auto fullDiskAccessStr = "Full Disk Access";
 static constexpr auto systemSettingsStr = "System Settings";
 static constexpr auto privacySecurityStr = "Privacy & Security";
@@ -233,33 +231,23 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->mountPointsWidget->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
 
-    QSettings settings;
-    if (settings.contains(tmutilSettingsKey)) {
-        qDebug() << "settings appears to contain:" << tmutilSettingsKey;
-        qDebug() << "found:" << settings.value(tmutilSettingsKey).toString();
-    }
-    else {
-        qInfo() << "settings don't appear to contain:" << tmutilSettingsKey;
-        qInfo() << "setting value to default:" << defaultTmutilPath;
-        settings.setValue(tmutilSettingsKey, QString(defaultTmutilPath));
-    }
-    const auto tmUtilPath = settings.value(tmutilSettingsKey);
-    const auto tmutil_file_info = QFileInfo(tmUtilPath.toString());
-    if (tmutil_file_info.isExecutable()) {
+    const auto tmUtilPath = SettingsDialog::tmutilPath();
+    const auto tmutilFileInfo = QFileInfo(tmUtilPath);
+    if (tmutilFileInfo.isExecutable()) {
         qInfo() << "Executable absolute path is:"
-                << tmutil_file_info.absoluteFilePath();
-        this->tmUtilPath = tmUtilPath.toString();
+                << tmutilFileInfo.absoluteFilePath();
+        this->tmUtilPath = tmUtilPath;
     }
-    else if (tmutil_file_info.exists()) {
+    else if (tmutilFileInfo.exists()) {
         qWarning() << "exists but not executable!";
         QMessageBox::critical(this, "Error!",
                               QString("'%1' file not executable!")
-                                  .arg(tmutil_file_info.absoluteFilePath()));
+                                  .arg(tmutilFileInfo.absoluteFilePath()));
     }
     else {
         QMessageBox::critical(this, "Error!",
                               QString("'%1' file not found!")
-                                  .arg(tmutil_file_info.absoluteFilePath()));
+                                  .arg(tmutilFileInfo.absoluteFilePath()));
         qWarning() << "tmutil file not found!";
     }
 
@@ -268,12 +256,12 @@ MainWindow::MainWindow(QWidget *parent):
 
     connect(this->ui->actionAbout, &QAction::triggered,
             this, &MainWindow::showAboutDialog);
+    connect(this->ui->actionPreferences, &QAction::triggered,
+            this, &MainWindow::showPreferencesDialog);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
             this, &MainWindow::updateMountPointsDir);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::fileChanged,
             this, &MainWindow::updateMountPointsFile);
-    connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
-            this, &MainWindow::selectedPathsChanged);
     connect(this->ui->deletingPushButton, &QPushButton::pressed,
             this, &MainWindow::deleteSelectedPaths);
     connect(this->ui->uniqueSizePushButton, &QPushButton::pressed,
@@ -282,19 +270,25 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::restoreSelectedPaths);
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedPaths);
-    connect(this->timer, &QTimer::timeout,
-            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
-    connect(this->timer, &QTimer::timeout,
-            this, &MainWindow::checkTmStatus);
+
+    connect(this->ui->destinationsWidget, &DestinationsWidget::queryFailedToStart,
+            this, &MainWindow::handleQueryFailedToStart);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
             this, &MainWindow::updateMountPointsView);
+    connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
+            this, &MainWindow::showStatus);
+
+    connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
+            this, &MainWindow::selectedPathsChanged);
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemExpanded,
             this, &MainWindow::mountPointItemExpanded);
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemCollapsed,
             this, &MainWindow::mountPointItemCollapsed);
-    connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
-            this, &MainWindow::showStatus);
 
+    connect(this->timer, &QTimer::timeout,
+            this, &MainWindow::checkTmStatus);
+    connect(this->timer, &QTimer::timeout,
+            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
     QTimer::singleShot(0,
                        this->ui->destinationsWidget,
                        &DestinationsWidget::queryDestinations);
@@ -332,6 +326,13 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
                                       .arg(path));
             this->ui->mountPointsWidget->addTopLevelItem(item);
         }
+    }
+    if (paths.empty()) {
+        QMessageBox msgBox;
+        msgBox.setIcon(QMessageBox::Critical);
+        msgBox.setText("No destination mounted!");
+        msgBox.setInformativeText("No backups or restores are currently possible!");
+        msgBox.exec();
     }
 }
 
@@ -613,6 +614,13 @@ void MainWindow::showAboutDialog()
     QMessageBox::about(this, tr("About"), text);
 }
 
+void MainWindow::showPreferencesDialog()
+{
+    qDebug() << "showPreferencesDialog called";
+    const auto dialog = new SettingsDialog{this};
+    dialog->show();
+}
+
 void MainWindow::checkTmStatus()
 {
     // need to call "tmutil status -X"
@@ -629,5 +637,33 @@ void MainWindow::checkTmStatus()
 void MainWindow::showStatus(const QString& status)
 {
     this->ui->statusbar->showMessage(status);
+}
+
+void MainWindow::handleQueryFailedToStart(const QString &text)
+{
+    qDebug() << "MainWindow::handleQueryFailedToStar called:"
+             << text;
+    disconnect(this->timer, &QTimer::timeout,
+               this->ui->destinationsWidget,
+               &DestinationsWidget::queryDestinations);
+    constexpr auto queryFailedMsg = "Unable to start destinations query";
+    const auto tmutilPath = this->ui->destinationsWidget->tmutilPath();
+    const auto info = QFileInfo(tmutilPath);
+    QMessageBox msgBox;
+    msgBox.setOptions(QMessageBox::Option::DontUseNativeDialog);
+    msgBox.setWindowTitle("Error!"); // macOS ignored but set in case changes
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setText(queryFailedMsg);
+    msgBox.setDetailedText(text);
+    auto informativeText = QString{};
+    if (!info.exists()) {
+        informativeText = QString("Time Machine utility '%1' not found!").arg(tmutilPath);
+    }
+    else if (!info.isExecutable()) {
+        informativeText = QString("Time Machine utility '%1' not executable!")
+                              .arg(info.absoluteFilePath());
+    }
+    msgBox.setInformativeText(informativeText);
+    msgBox.exec();
 }
 

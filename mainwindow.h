@@ -43,6 +43,7 @@ public slots:
     void verifySelectedPaths();
     void selectedPathsChanged();
     void showAboutDialog();
+    void showPreferencesDialog();
     void reportDir(QTreeWidgetItem *item,
                    std::error_code ec);
     void addDirEntry(QTreeWidgetItem *item,
@@ -53,6 +54,9 @@ public slots:
     void showStatus(const QString& status);
 
 signals:
+
+private slots:
+    void handleQueryFailedToStart(const QString &text);
 
 private:
     Ui::MainWindow *ui{};

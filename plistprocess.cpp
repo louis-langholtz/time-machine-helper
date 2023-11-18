@@ -104,21 +104,14 @@ void PlistProcess::handleStarted()
 
 void PlistProcess::handleErrorOccurred(int error)
 {
-    emit gotError(this->process->errorString());
+    emit errorOccurred(error, this->process->errorString());
 }
 
 void PlistProcess::handleFinished(int exitCode, int exitStatus)
 {
-    if (exitStatus == QProcess::ExitStatus::CrashExit) {
-        emit gotError("Program exited abnormally.");
-    }
-    else if (exitCode != 0) {
-        emit gotError(QString("Unexpected exit status of %1.")
-                          .arg(QString::number(exitCode)));
-    }
     delete this->process;
     this->process = nullptr;
-    emit finished();
+    emit finished(exitCode, exitStatus);
 }
 
 void PlistProcess::readMore()
@@ -234,8 +227,8 @@ void PlistProcess::readMore()
     if (reader->hasError()) {
         qWarning() << "xml reader had error:"
                    << reader->errorString();
-        emit gotError(QString("xml reader had error: %1")
-                          .arg(this->reader->errorString()));
+        emit gotReaderError(this->reader->lineNumber(),
+                            this->reader->errorString());
         return;
     }
 }

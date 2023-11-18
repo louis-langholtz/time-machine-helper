@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QXmlStreamReader>
 #include <QMainWindow>
+#include <QFileInfo>
 
 #include "destinationswidget.h"
 #include "plist_object.h"
@@ -31,6 +32,20 @@ auto toPlistDictVector(const plist_array& array)
 DestinationsWidget::DestinationsWidget(QWidget *parent)
     : QTableWidget{parent}
 {
+    if (const auto item = this->horizontalHeaderItem(3)) {
+        this->saveBg = item->background();
+        item->setBackground(QBrush(QColor(255, 0, 0, 255)));
+    }
+}
+
+QString DestinationsWidget::tmutilPath() const
+{
+    return this->tmuPath;
+}
+
+void DestinationsWidget::setTmutilPath(const QString& path)
+{
+    this->tmuPath = path;
 }
 
 QTableWidgetItem *DestinationsWidget::createdItem(
@@ -49,8 +64,12 @@ void DestinationsWidget::queryDestinations()
     auto process = new PlistProcess(this);
     connect(process, &PlistProcess::gotPlist,
             this, &DestinationsWidget::updateUI);
-    connect(process, &PlistProcess::gotError,
-            this, &DestinationsWidget::handleError);
+    connect(process, &PlistProcess::errorOccurred,
+            this, &DestinationsWidget::handleErrorOccurred);
+    connect(process, &PlistProcess::gotReaderError,
+            this, &DestinationsWidget::handleReaderError);
+    connect(process, &PlistProcess::finished,
+            this, &DestinationsWidget::handleQueryFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmuPath,
@@ -105,20 +124,56 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
     }
 }
 
-void DestinationsWidget::handleError(const QString& text)
+void DestinationsWidget::handleReaderError(
+    int lineNumber, const QString& text)
 {
     const auto status =
-        QString("Call to '%1 %2 %3' erred: %4.")
+        QString("'%1 %2 %3' erred reading line %4: %5.")
             .arg(this->tmuPath,
                  tmutilDestInfoVerb,
                  tmutilXmlOption,
+                 QString::number(lineNumber),
                  text);
     emit gotError(status);
-    QMessageBox msgBox;
-    msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setText("Got process error when trying to query system destinations.");
-    msgBox.setInformativeText(status);
-    msgBox.exec();
+}
+
+void DestinationsWidget::handleErrorOccurred(int error, const QString &text)
+{
+    qDebug() << "handleErrorOccurred:"
+             << error << text;
+    switch (QProcess::ProcessError(error)) {
+    case QProcess::FailedToStart:{
+        emit queryFailedToStart(text);
+        break;
+    }
+    case QProcess::Crashed:
+    case QProcess::Timedout:
+    case QProcess::ReadError:
+    case QProcess::WriteError:
+    case QProcess::UnknownError:
+        break;
+    }
+}
+
+void DestinationsWidget::handleQueryFinished(int exitCode, int exitStatus)
+{
+    if (exitStatus == QProcess::ExitStatus::CrashExit) {
+        const auto status =
+            QString("'%1 %2 %3' exited abnormally.")
+                .arg(this->tmuPath,
+                     tmutilDestInfoVerb,
+                     tmutilXmlOption);
+        emit gotError(status);
+    }
+    else if (exitCode != 0) {
+        const auto status =
+            QString("'%1 %2 %3' exit code was %4.")
+                .arg(this->tmuPath,
+                     tmutilDestInfoVerb,
+                     tmutilXmlOption,
+                     QString::number(exitCode));
+        emit gotError(status);
+    }
 }
 
 void DestinationsWidget::updateUI(const plist_object &plist)
@@ -132,6 +187,20 @@ void DestinationsWidget::updateUI(const plist_object &plist)
         Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
     auto mountPoints = std::vector<std::string>{};
     auto row = 0;
+    if (destinations.empty()) {
+        if (const auto item = this->horizontalHeaderItem(3)) {
+            item->setBackground(Qt::GlobalColor::red);
+        }
+        QMessageBox msgBox;
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setText("No destinations setup?!");
+        auto info = QString{};
+        info.append("No backups or restores are currently possible! ");
+        info.append("Add a destination to Time Machine as soon as you can.");
+        msgBox.setInformativeText(info);
+        msgBox.exec();
+        return;
+    }
     for (const auto& d: destinations) {
         {
             const auto item = this->createdItem(row, 0);
@@ -156,6 +225,9 @@ void DestinationsWidget::updateUI(const plist_object &plist)
         }
         const auto mp = get<std::string>(d, "MountPoint");
         {
+            if (const auto item = this->horizontalHeaderItem(3)) {
+                item->setBackground(this->saveBg);
+            }
             const auto item = this->createdItem(row, 3);
             item->setText(QString::fromStdString(mp.value_or("")));
             item->setTextAlignment(Qt::AlignLeft|Qt::AlignVCenter);

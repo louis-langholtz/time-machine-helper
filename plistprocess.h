@@ -24,10 +24,23 @@ public:
 
 signals:
     void gotPlist(const plist_object& plist);
+
     void gotInfo(const QString& text);
-    void gotError(const QString& text);
+
+    /// @brief Error occurred.
+    /// @note Emitted for any <code>errorOccurred</code> signals from
+    ///   the underlying <code>QProcess</code> along with the value of
+    ///   <code>QProcess::errorString()</code>.
+    /// @param error A <code>QProcess::ProcessError</code> value.
+    /// @param text Error string from underlying <code>QProcess</code>.
+    void errorOccurred(int error, const QString& text);
+
+    /// @brief Got error from plist reader.
+    void gotReaderError(int lineNumber, const QString& text);
+
     void started();
-    void finished();
+
+    void finished(int exitCode, int exitStatus);
 
 private slots:
     void handleStarted();

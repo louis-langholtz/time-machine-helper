@@ -15,7 +15,9 @@ public:
     explicit DestinationsWidget(
         QWidget *parent = nullptr);
 
-    QTableWidgetItem *createdItem(int row, int column);
+    QString tmutilPath() const;
+
+    void setTmutilPath(const QString& path);
 
 public slots:
     void queryDestinations();
@@ -24,13 +26,19 @@ public slots:
 signals:
     void gotPaths(const std::vector<std::string>& paths);
     void gotError(const QString& status);
+    void queryFailedToStart(const QString& text);
 
 private slots:
     void updateUI(const plist_object &plist);
-    void handleError(const QString& text);
+    void handleReaderError(int lineNumber, const QString& text);
+    void handleErrorOccurred(int error, const QString& text);
+    void handleQueryFinished(int exitCode, int exitStatus);
 
 private:
+    QTableWidgetItem *createdItem(int row, int column);
+
     QString tmuPath{"tmutil"};
+    QBrush saveBg;
 };
 
 #endif // DESTINATIONSWIDGET_H
