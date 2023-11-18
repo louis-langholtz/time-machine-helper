@@ -256,7 +256,7 @@ MainWindow::MainWindow(QWidget *parent):
 
     connect(this->ui->actionAbout, &QAction::triggered,
             this, &MainWindow::showAboutDialog);
-    connect(this->ui->actionPreferences, &QAction::triggered,
+    connect(this->ui->actionSettings, &QAction::triggered,
             this, &MainWindow::showPreferencesDialog);
     connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
             this, &MainWindow::updateMountPointsDir);

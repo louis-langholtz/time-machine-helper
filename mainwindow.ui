@@ -280,7 +280,7 @@
      <string>File</string>
     </property>
     <addaction name="actionAbout"/>
-    <addaction name="actionPreferences"/>
+    <addaction name="actionSettings"/>
    </widget>
    <addaction name="menuActions"/>
   </widget>
@@ -306,7 +306,7 @@
     <string>Quit</string>
    </property>
   </action>
-  <action name="actionPreferences">
+  <action name="actionSettings">
    <property name="text">
     <string>Preferences</string>
    </property>
