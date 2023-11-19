@@ -1,6 +1,8 @@
 #ifndef PLISTPROCESS_H
 #define PLISTPROCESS_H
 
+#include <optional>
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -18,37 +20,67 @@ public:
     explicit PlistProcess(QObject *parent = nullptr);
 
     bool done() const noexcept;
+    std::optional<plist_object> plist() const;
 
+    /// @brief Start specified program with given arguments.
+    /// @post <code>errorOccurred(int, const QString&)</code> will
+    ///   be emitted with the first argument of
+    ///   <code>QProcess::FailedToStart</code>, or
+    ///   <code>started</code> will be emitted.
     void start(const QString& program,
                const QStringList& args = {});
 
 signals:
+    /// @brief Got the "plist".
+    /// @note Emitted when the reader has finished parsing a "plist".
+    /// @post Finally, <code>finished</code> will be emitted.
     void gotPlist(const plist_object& plist);
 
-    void gotInfo(const QString& text);
+    /// @brief Got no "plist".
+    /// @note Emitted when the reader has finished without a "plist".
+    /// @post Finally, @c finished will be emitted.
+    void gotNoPlist();
 
     /// @brief Error occurred.
-    /// @note Emitted for any <code>errorOccurred</code> signals from
-    ///   the underlying <code>QProcess</code> along with the value of
+    /// @note Emitted for any @c errorOccurred signals from the
+    ///   underlying @c QProcess along with the value of
     ///   <code>QProcess::errorString()</code>.
     /// @param error A <code>QProcess::ProcessError</code> value.
-    /// @param text Error string from underlying <code>QProcess</code>.
+    /// @param text Error string from underlying process.
     void errorOccurred(int error, const QString& text);
 
     /// @brief Got error from plist reader.
-    void gotReaderError(int lineNumber, const QString& text);
+    /// @note Only emitted if reader got to end of input and
+    ///   detected an error.
+    /// @param lineNumber number of the line of the error.
+    /// @param error A <code>QXmlStreamReader::Error</code> value.
+    /// @param text Error string from underlying XML reader.
+    void gotReaderError(int lineNumber,
+                        int error,
+                        const QString& text);
 
+    /// @brief Started.
+    /// @note Emitted when underlying process has actually started.
+    /// @post @c errorOccurred or @c gotReaderError may be emitted.
+    ///   @c gotPlist or @c gotNoPlist will be emitted. Finally,
+    ///   @c finished is emitted.
     void started();
 
-    void finished(int exitCode, int exitStatus);
+    /// @brief Finished.
+    /// @note Emitted after @c started had been emitted and the
+    ///   underlying process has finished.
+    /// @param code Code that program returned on normal exit.
+    /// @param status A @c QProcess::ExitStatus value.
+    void finished(int code, int status);
 
 private slots:
     void handleStarted();
     void handleErrorOccurred(int error);
-    void handleFinished(int exitCode, int exitStatus);
+    void handleProcessFinished(int code, int status);
     void readMore();
 
 private:
+    std::optional<plist_object> data;
     QProcess *process{};
     QXmlStreamReader *reader{};
     await_handle<plist_variant> awaiting_handle;

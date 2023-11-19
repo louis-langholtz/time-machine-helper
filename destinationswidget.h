@@ -30,7 +30,7 @@ signals:
 
 private slots:
     void updateUI(const plist_object &plist);
-    void handleReaderError(int lineNumber, const QString& text);
+    void handleReaderError(int lineNumber, int error, const QString& text);
     void handleErrorOccurred(int error, const QString& text);
     void handleQueryFinished(int exitCode, int exitStatus);
 

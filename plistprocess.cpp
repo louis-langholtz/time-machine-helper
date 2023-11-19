@@ -81,7 +81,7 @@ PlistProcess::PlistProcess(QObject *parent):
     connect(this->process, &QProcess::errorOccurred,
             this, &PlistProcess::handleErrorOccurred);
     connect(this->process, &QProcess::finished,
-            this, &PlistProcess::handleFinished);
+            this, &PlistProcess::handleProcessFinished);
 }
 
 bool PlistProcess::done() const noexcept
@@ -104,14 +104,20 @@ void PlistProcess::handleStarted()
 
 void PlistProcess::handleErrorOccurred(int error)
 {
-    emit errorOccurred(error, this->process->errorString());
+    const auto string = this->process
+                            ? this->process->errorString()
+                            : QString{};
+    emit errorOccurred(error, string);
 }
 
-void PlistProcess::handleFinished(int exitCode, int exitStatus)
+void PlistProcess::handleProcessFinished(int code, int status)
 {
     delete this->process;
     this->process = nullptr;
-    emit finished(exitCode, exitStatus);
+    if (!data) {
+        emit gotNoPlist();
+    }
+    emit finished(code, status);
 }
 
 void PlistProcess::readMore()
@@ -120,6 +126,7 @@ void PlistProcess::readMore()
         const auto tokenType = reader->readNext();
         switch (tokenType) {
         case QXmlStreamReader::NoToken:
+            qDebug() << "PlistProcess no token";
             break;
         case QXmlStreamReader::Invalid:
             break;
@@ -193,8 +200,8 @@ void PlistProcess::readMore()
                 break;
             case plist_element_type::plist:
             {
-                const auto plistObject = this->task();
-                emit gotPlist(plistObject);
+                this->data = this->task();
+                emit gotPlist(*(this->data));
                 break;
             }
             }
@@ -208,15 +215,12 @@ void PlistProcess::readMore()
         case QXmlStreamReader::DTD:
             break;
         case QXmlStreamReader::EntityReference:
-            qWarning() << "unresolved name:" << reader->name();
-            emit gotInfo(QString("unresolved name: %1")
-                             .arg(reader->name()));
+            qWarning() << "unexpected entity reference:"
+                       << reader->name();
             break;
         case QXmlStreamReader::ProcessingInstruction:
             qWarning() << "unexpected processing instruction:"
                        << reader->text();
-            emit gotInfo(QString("found processing instruction: %1")
-                             .arg(reader->text()));
             break;
         }
     }
@@ -225,9 +229,8 @@ void PlistProcess::readMore()
         return;
     }
     if (reader->hasError()) {
-        qWarning() << "xml reader had error:"
-                   << reader->errorString();
         emit gotReaderError(this->reader->lineNumber(),
+                            this->reader->error(),
                             this->reader->errorString());
         return;
     }

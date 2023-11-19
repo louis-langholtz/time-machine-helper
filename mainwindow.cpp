@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QFontDatabase>
+#include <QXmlStreamReader>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -30,33 +31,35 @@
 
 namespace {
 
+constexpr auto toolName = "Time Machine utility";
+
 // Content of this attribute seems to be comma separated list, where
 // first element is one of the following:
 //   "SnapshotStorage","MachineStore", "Backup", "VolumeStore"
-static constexpr auto timeMachineMetaAttr =
+constexpr auto timeMachineMetaAttr =
     "com.apple.timemachine.private.structure.metadata";
 
 // Machine level attributes...
-static constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
-static constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
-static constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
-static constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
-static constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
-static constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
+constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
+constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
+constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
+constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
+constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
+constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
 
 // Volume level attributes...
-static constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
-static constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
+constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
+constexpr auto volumeBytesUsedAttr  = "com.apple.backupd.VolumeBytesUsed";
 
-static constexpr auto fullDiskAccessStr = "Full Disk Access";
-static constexpr auto systemSettingsStr = "System Settings";
-static constexpr auto privacySecurityStr = "Privacy & Security";
-static constexpr auto cantListDirWarning = "Warning: unable to list contents of this directory!";
+constexpr auto fullDiskAccessStr = "Full Disk Access";
+constexpr auto systemSettingsStr = "System Settings";
+constexpr auto privacySecurityStr = "Privacy & Security";
+constexpr auto cantListDirWarning = "Warning: unable to list contents of this directory!";
 
-static constexpr auto tmutilDeleteVerb     = "delete";
-static constexpr auto tmutilVerifyVerb     = "verifychecksums";
-static constexpr auto tmutilUniqueSizeVerb = "uniquesize";
-static constexpr auto tmutilStatusVerb     = "status";
+constexpr auto tmutilDeleteVerb     = "delete";
+constexpr auto tmutilVerifyVerb     = "verifychecksums";
+constexpr auto tmutilUniqueSizeVerb = "uniquesize";
+constexpr auto tmutilStatusVerb     = "status";
 
 constexpr auto backupsCountCol = 1;
 
@@ -231,26 +234,9 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->mountPointsWidget->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
 
-    const auto tmUtilPath = SettingsDialog::tmutilPath();
-    const auto tmutilFileInfo = QFileInfo(tmUtilPath);
-    if (tmutilFileInfo.isExecutable()) {
-        qInfo() << "Executable absolute path is:"
-                << tmutilFileInfo.absoluteFilePath();
-        this->tmUtilPath = tmUtilPath;
-    }
-    else if (tmutilFileInfo.exists()) {
-        qWarning() << "exists but not executable!";
-        QMessageBox::critical(this, "Error!",
-                              QString("'%1' file not executable!")
-                                  .arg(tmutilFileInfo.absoluteFilePath()));
-    }
-    else {
-        QMessageBox::critical(this, "Error!",
-                              QString("'%1' file not found!")
-                                  .arg(tmutilFileInfo.absoluteFilePath()));
-        qWarning() << "tmutil file not found!";
-    }
+    this->tmUtilPath = SettingsDialog::tmutilPath();
 
+    this->ui->destinationsWidget->setTmutilPath(this->tmUtilPath);
     this->ui->destinationsWidget->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
 
@@ -618,7 +604,11 @@ void MainWindow::showSettingsDialog()
 {
     qDebug() << "showPreferencesDialog called";
     const auto dialog = new SettingsDialog{this};
-    dialog->show();
+    connect(dialog, &SettingsDialog::tmutilPathChanged,
+            this, &MainWindow::handleTmutilPathChange);
+    connect(dialog, &SettingsDialog::finished,
+            dialog, &SettingsDialog::deleteLater);
+    dialog->exec();
 }
 
 void MainWindow::checkTmStatus()
@@ -626,8 +616,13 @@ void MainWindow::checkTmStatus()
     // need to call "tmutil status -X"
     auto *process = new PlistProcess{this};
     connect(process, &PlistProcess::gotPlist,
-            this->ui->destinationsWidget,
-            &DestinationsWidget::handleStatus);
+            this->ui->destinationsWidget, &DestinationsWidget::handleStatus);
+    connect(process, &PlistProcess::gotNoPlist,
+            this, &MainWindow::handleTmStatusNoPlist);
+    connect(process, &PlistProcess::gotReaderError,
+            this, &MainWindow::handleTmStatusReaderError);
+    connect(process, &PlistProcess::finished,
+            this, &MainWindow::handleTmStatusFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmUtilPath,
@@ -641,7 +636,7 @@ void MainWindow::showStatus(const QString& status)
 
 void MainWindow::handleQueryFailedToStart(const QString &text)
 {
-    qDebug() << "MainWindow::handleQueryFailedToStar called:"
+    qDebug() << "MainWindow::handleQueryFailedToStart called:"
              << text;
     disconnect(this->timer, &QTimer::timeout,
                this->ui->destinationsWidget,
@@ -650,6 +645,7 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     const auto tmutilPath = this->ui->destinationsWidget->tmutilPath();
     const auto info = QFileInfo(tmutilPath);
     QMessageBox msgBox;
+    msgBox.setStandardButtons(QMessageBox::Open);
     msgBox.setOptions(QMessageBox::Option::DontUseNativeDialog);
     msgBox.setWindowTitle("Error!"); // macOS ignored but set in case changes
     msgBox.setIcon(QMessageBox::Critical);
@@ -657,13 +653,92 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     msgBox.setDetailedText(text);
     auto informativeText = QString{};
     if (!info.exists()) {
-        informativeText = QString("Time Machine utility '%1' not found!").arg(tmutilPath);
+        informativeText = QString("%1 '%21' not found!")
+                              .arg(toolName, tmutilPath);
+    }
+    else if (!info.isFile()) {
+        informativeText = QString("%1 path '%2' not a file!")
+                              .arg(toolName, info.absoluteFilePath());
     }
     else if (!info.isExecutable()) {
-        informativeText = QString("Time Machine utility '%1' not executable!")
-                              .arg(info.absoluteFilePath());
+        informativeText = QString("%1 file '%2' not executable!")
+                              .arg(toolName, info.absoluteFilePath());
+    }
+    if (!informativeText.isEmpty()) {
+        informativeText.append(
+            QString("Perhaps the %1 path needs to be updated in settings?")
+                .arg(toolName));
     }
     msgBox.setInformativeText(informativeText);
-    msgBox.exec();
+    if (msgBox.exec() == QMessageBox::Open) {
+        this->showSettingsDialog();
+    }
+}
+
+void MainWindow::handleTmutilPathChange(const QString &path)
+{
+    qDebug() << "MainWindow::handleTmutilPathChange called:"
+             << path;
+
+    disconnect(this->timer, &QTimer::timeout,
+               this, &MainWindow::checkTmStatus);
+    disconnect(this->timer, &QTimer::timeout,
+               this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+
+    this->tmUtilPath = path;
+    this->ui->destinationsWidget->setTmutilPath(path);
+
+    connect(this->timer, &QTimer::timeout,
+            this, &MainWindow::checkTmStatus);
+    connect(this->timer, &QTimer::timeout,
+            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+}
+
+void MainWindow::handleTmStatusNoPlist()
+{
+    qDebug() << "handleTmStatusNoPlist called";
+
+    disconnect(this->timer, &QTimer::timeout,
+               this, &MainWindow::checkTmStatus);
+    QMessageBox msgBox;
+    msgBox.setStandardButtons(QMessageBox::Open);
+    msgBox.setOptions(QMessageBox::Option::DontUseNativeDialog);
+    msgBox.setWindowTitle("Error!"); // macOS ignored but set in case changes
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setText("Not getting status info!");
+    const auto infoText =
+        QString("Perhaps the %1 path needs to be updated in settings?")
+            .arg(toolName);
+    msgBox.setInformativeText(infoText);
+    if (msgBox.exec() == QMessageBox::Open) {
+        this->showSettingsDialog();
+    }
+}
+
+void MainWindow::handleTmStatusReaderError(
+    int lineNumber, int error, const QString &text)
+{
+    qDebug() << "handleTmStatusReaderError called:" << text;
+    qDebug() << "line #" << lineNumber;
+    qDebug() << "error" << error;
+    this->showStatus(QString("Error reading Time Machine status: line %1, %2")
+                         .arg(lineNumber)
+                         .arg(text));
+}
+
+void MainWindow::handleTmStatusFinished(int code, int status)
+{
+    switch (QProcess::ExitStatus(status)) {
+    case QProcess::NormalExit:
+        break;
+    case QProcess::CrashExit:
+        this->showStatus(QString("When getting status: %1 exited abnormally")
+                             .arg(toolName));
+        return;
+    }
+    if (code != 0) {
+        this->showStatus(QString("When getting status: %1 exited with code %2")
+                             .arg(toolName).arg(code));
+    }
 }
 

@@ -125,14 +125,15 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
 }
 
 void DestinationsWidget::handleReaderError(
-    int lineNumber, const QString& text)
+    int lineNumber, int error, const QString& text)
 {
     const auto status =
-        QString("'%1 %2 %3' erred reading line %4: %5.")
+        QString("'%1 %2 %3' erred reading line %4, code %5: %6.")
             .arg(this->tmuPath,
                  tmutilDestInfoVerb,
                  tmutilXmlOption,
                  QString::number(lineNumber),
+                 QString::number(error),
                  text);
     emit gotError(status);
 }

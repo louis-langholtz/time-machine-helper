@@ -17,6 +17,12 @@ namespace {
 constexpr auto tmutilSettingsKey = "tmutil_path";
 constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
 
+constexpr auto filters = QDir::Executable|
+                         QDir::AllEntries|
+                         QDir::CaseSensitive|
+                         QDir::Hidden|
+                         QDir::NoDotAndDotDot;
+
 QSettings &settings()
 {
     static QSettings the;
@@ -59,11 +65,6 @@ QValidator::State ExecutableValidator::validate(
     }
     qDebug() << "base is:" << base;
     qDebug() << "pre is:" << pre;
-    constexpr auto filters = QDir::Executable|
-                             QDir::AllEntries|
-                             QDir::CaseSensitive|
-                             QDir::Hidden|
-                             QDir::NoDotAndDotDot;
     do {
         auto dir = QDir(base);
         const auto nameFilter = QString("%1*").arg(pre);
@@ -91,11 +92,17 @@ QString SettingsDialog::tmutilPath()
 
 SettingsDialog::SettingsDialog(QWidget *parent):
     QDialog{parent},
+    saveButton{new QPushButton{this}},
+    closeButton{new QPushButton{this}},
     tmutilPathLabel{new QLabel{this}},
     tmutilPathEditor{new QLineEdit{this}},
     tmutilPathButton{new QPushButton{this}},
     tmutilPathValidator{new ExecutableValidator{this}}
 {
+    this->saveButton->setObjectName("saveButton");
+    this->saveButton->setText(tr("Save"));
+    this->closeButton->setObjectName("closeButton");
+    this->closeButton->setText(tr("Close"));
     this->originalEditorStyleSheet = this->tmutilPathEditor->styleSheet();
     this->setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle(tr("Preferences"));
@@ -114,27 +121,38 @@ SettingsDialog::SettingsDialog(QWidget *parent):
             layout->addWidget(this->tmutilPathButton);
             return layout;
         }());
+        mainLayout->addLayout([this]() -> QLayout*{
+            auto layout = new QHBoxLayout;
+            layout->addWidget(this->saveButton);
+            layout->addWidget(this->closeButton);
+            layout->setAlignment(Qt::AlignCenter);
+            return layout;
+        }());
         return mainLayout;
     }());
+
+    connect(this->saveButton, &QPushButton::clicked,
+            this, &SettingsDialog::save);
+    connect(this->closeButton, &QPushButton::clicked,
+            this, &SettingsDialog::close);
     connect(this->tmutilPathEditor, &QLineEdit::editingFinished,
             this, &SettingsDialog::handleTmutilPathFinished);
     connect(this->tmutilPathEditor, &QLineEdit::textChanged,
             this, &SettingsDialog::handleTmutilPathChanged);
     connect(this->tmutilPathButton, &QPushButton::clicked,
-            this, &SettingsDialog::openFileDialog);
+            this, &SettingsDialog::openTmutilPathDialog);
+
     this->tmutilPathEditor->setText(tmutilPath());
+    this->saveButton->setEnabled(false);
+    this->closeButton->setEnabled(allAcceptable());
 }
 
 void SettingsDialog::closeEvent(QCloseEvent *event)
 {
-    if (!event) {
+    if (!event || !anyChanged()) {
         return;
     }
-    if (this->tmutilPathEditor->hasAcceptableInput()) {
-        return;
-    }
-    const auto text = this->tmutilPathEditor->text();
-    qDebug() << "SettingsDialog::closeEvent ignoring, bad text:" << text;
+    qDebug() << "SettingsDialog::closeEvent ignoring";
     event->ignore();
 }
 
@@ -147,27 +165,48 @@ void SettingsDialog::reject()
     this->close();
 }
 
+bool SettingsDialog::allAcceptable() const
+{
+    if (!this->tmutilPathEditor->hasAcceptableInput()) {
+        return false;
+    }
+    return true;
+}
+
+bool SettingsDialog::anyChanged() const
+{
+    if (tmutilPath() != this->tmutilPathEditor->text()) {
+        return true;
+    }
+    return false;
+}
+
 void SettingsDialog::handleTmutilPathFinished()
 {
-    const auto text = this->tmutilPathEditor->text();
+    const auto newValue = this->tmutilPathEditor->text();
     if (this->tmutilPathEditor->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathFinished good!";
-        settings().setValue(tmutilSettingsKey, text);
-        this->tmutilPathEditor->setStyleSheet(this->originalEditorStyleSheet);
-        emit tmutilPathChanged(text);
+        const auto oldValue = tmutilPath();
+        if (oldValue != newValue) {
+            this->saveButton->setEnabled(true);
+        }
         return;
     }
     qDebug() << "handleTmutilPathFinished bad"
-             << text;
+             << newValue;
 }
 
 void SettingsDialog::handleTmutilPathChanged(const QString &value)
 {
+    this->closeButton->setEnabled(allAcceptable() && !anyChanged());
+    this->saveButton->setEnabled(allAcceptable() && anyChanged());
+
     if (this->tmutilPathEditor->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathChanged acceptable:" << value;
-        const auto styleSheet = (value == tmutilPath())
-                                    ? this->originalEditorStyleSheet
-                                    : QString("background-color: rgb(170, 255, 170);");
+        const auto changed = tmutilPath() != value;
+        const auto styleSheet = changed
+                                    ? QString("background-color: rgb(170, 255, 170);")
+                                    : this->originalEditorStyleSheet;
         this->tmutilPathEditor->setStyleSheet(styleSheet);
     }
     else {
@@ -176,14 +215,41 @@ void SettingsDialog::handleTmutilPathChanged(const QString &value)
     }
 }
 
-void SettingsDialog::openFileDialog()
+void SettingsDialog::save()
 {
-    const auto fileName = QFileDialog::getOpenFileName(
-        this,
-        tr("Open File"),
-        "/",
-        {},
-        nullptr,
-        QFileDialog::DontUseNativeDialog);
-    qDebug() << "openFileDialog:" << fileName;
+    if (!allAcceptable()) {
+        return;
+    }
+    if (!anyChanged()) {
+        return;
+    }
+    {
+        const auto oldValue = tmutilPath();
+        const auto newValue = this->tmutilPathEditor->text();
+        this->tmutilPathEditor->setStyleSheet(this->originalEditorStyleSheet);
+        if (oldValue != newValue) {
+            settings().setValue(tmutilSettingsKey, newValue);
+            emit tmutilPathChanged(newValue);
+        }
+    }
+    this->saveButton->setEnabled(false);
+    this->accept();
+}
+
+void SettingsDialog::openTmutilPathDialog()
+{
+    QFileDialog dialog{this};
+    dialog.setWindowTitle(tr("Executable File"));
+    dialog.setDirectory("/");
+    dialog.setFileMode(QFileDialog::ExistingFile);
+    //dialog.setOptions(QFileDialog::DontUseNativeDialog);
+    dialog.setFilter(QDir::Hidden|QDir::AllEntries);
+    dialog.setNameFilter("*");
+    if (dialog.exec()) {
+        const auto files = dialog.selectedFiles();
+        qDebug() << "openFileDialog:" << files;
+        if (!files.isEmpty()) {
+            this->tmutilPathEditor->setText(files.first());
+        }
+    }
 }

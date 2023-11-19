@@ -20,16 +20,22 @@ public:
     void closeEvent(QCloseEvent *event) override;
     void reject() override;
 
+    bool allAcceptable() const;
+    bool anyChanged() const;
+
 signals:
     void tmutilPathChanged(const QString& path);
 
 private slots:
-    void openFileDialog();
+    void openTmutilPathDialog();
     void handleTmutilPathFinished();
     void handleTmutilPathChanged(const QString& value);
+    void save();
 
 private:
     QString originalEditorStyleSheet;
+    QPushButton *saveButton{};
+    QPushButton *closeButton{};
     QLabel *tmutilPathLabel{};
     QLineEdit *tmutilPathEditor{};
     QPushButton *tmutilPathButton{};

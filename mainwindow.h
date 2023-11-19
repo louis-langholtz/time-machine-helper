@@ -57,6 +57,12 @@ signals:
 
 private slots:
     void handleQueryFailedToStart(const QString &text);
+    void handleTmutilPathChange(const QString &path);
+    void handleTmStatusNoPlist();
+    void handleTmStatusReaderError(int lineNumber,
+                                   int error,
+                                   const QString& text);
+    void handleTmStatusFinished(int code, int status);
 
 private:
     Ui::MainWindow *ui{};
