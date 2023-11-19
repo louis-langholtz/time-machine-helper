@@ -13,8 +13,9 @@
 
 namespace {
 
-static constexpr auto tmutilDestInfoVerb = "destinationinfo";
-static constexpr auto tmutilXmlOption    = "-X";
+constexpr auto destinationsKey = "Destinations";
+constexpr auto tmutilDestInfoVerb = "destinationinfo";
+constexpr auto tmutilXmlOption    = "-X";
 constexpr auto noExplanationMsg = "no explanation";
 
 auto toPlistDictVector(const plist_array& array)
@@ -144,7 +145,7 @@ void DestinationsWidget::handleErrorOccurred(int error, const QString &text)
              << error << text;
     switch (QProcess::ProcessError(error)) {
     case QProcess::FailedToStart:{
-        emit queryFailedToStart(text);
+        emit failedToStartQuery(text);
         break;
     }
     case QProcess::Crashed:
@@ -177,11 +178,9 @@ void DestinationsWidget::handleQueryFinished(int exitCode, int exitStatus)
     }
 }
 
-void DestinationsWidget::updateUI(const plist_object &plist)
+void DestinationsWidget::update(
+    const std::vector<plist_dict>& destinations)
 {
-    const auto destinations = toPlistDictVector(
-        get<plist_array>(std::get<plist_dict>(plist.value),
-                         "Destinations").value());
     this->setRowCount(int(destinations.size()));
     const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     constexpr auto itemFlags =
@@ -236,7 +235,9 @@ void DestinationsWidget::updateUI(const plist_object &plist)
             item->setFlags(itemFlags);
         }
         auto ec = std::error_code{};
-        const auto si = mp? std::filesystem::space(*mp, ec): std::filesystem::space_info{};
+        const auto si = mp
+                            ? std::filesystem::space(*mp, ec)
+                            : std::filesystem::space_info{};
         {
             const auto item = this->createdItem(row, 4);
             if (mp && !ec) {
@@ -266,4 +267,49 @@ void DestinationsWidget::updateUI(const plist_object &plist)
         ++row;
     }
     emit gotPaths(mountPoints);
+}
+
+void DestinationsWidget::update(const plist_array &plist)
+{
+    auto destinations = std::vector<plist_dict>{};
+    for (const auto& element: plist) {
+        const auto p = std::get_if<plist_dict>(&element.value);
+        if (!p) {
+            emit gotError(QString(
+                "Unexpected type of element %1 in '%2' key entry array!")
+                              .arg(&element - plist.data())
+                              .arg(destinationsKey));
+            continue;
+        }
+        destinations.push_back(*p);
+    }
+    update(destinations);
+}
+
+void DestinationsWidget::update(const plist_dict &plist)
+{
+    const auto it = plist.find(destinationsKey);
+    if (it == plist.end()) {
+        emit wrongQueryInfo(QString("'%1' key entry not found!")
+                                .arg(destinationsKey));
+    }
+    const auto p = std::get_if<plist_array>(&(it->second.value));
+    if (!p) {
+        emit wrongQueryInfo(
+            QString("'%1' key entry not array - entry index is %2!")
+                .arg(destinationsKey)
+                .arg(it->second.value.index()));
+    }
+    update(*p);
+}
+
+void DestinationsWidget::updateUI(const plist_object &plist)
+{
+    if (const auto p = std::get_if<plist_dict>(&plist.value)) {
+        return this->update(*p);
+    }
+    emit wrongQueryInfo(QString(
+        "Got wrong plist value type: expected index of %1, got %2!")
+                            .arg(plist_variant(plist_dict{}).index(),
+                                 plist.value.index()));
 }

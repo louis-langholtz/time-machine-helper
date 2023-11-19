@@ -26,7 +26,8 @@ public slots:
 signals:
     void gotPaths(const std::vector<std::string>& paths);
     void gotError(const QString& status);
-    void queryFailedToStart(const QString& text);
+    void failedToStartQuery(const QString& text);
+    void wrongQueryInfo(const QString& detail);
 
 private slots:
     void updateUI(const plist_object &plist);
@@ -36,6 +37,9 @@ private slots:
 
 private:
     QTableWidgetItem *createdItem(int row, int column);
+    void update(const std::vector<plist_dict>& destinations);
+    void update(const plist_array &plist);
+    void update(const plist_dict &plist);
 
     QString tmuPath{"tmutil"};
     QBrush saveBg;

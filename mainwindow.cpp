@@ -257,7 +257,7 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedPaths);
 
-    connect(this->ui->destinationsWidget, &DestinationsWidget::queryFailedToStart,
+    connect(this->ui->destinationsWidget, &DestinationsWidget::failedToStartQuery,
             this, &MainWindow::handleQueryFailedToStart);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
             this, &MainWindow::updateMountPointsView);
