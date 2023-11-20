@@ -11,7 +11,7 @@ This project minimally needs the following:
 - [C++20](https://en.wikipedia.org/wiki/C++20) (or higher).
 - [coroutine library support](https://en.cppreference.com/w/cpp/coroutine).
 
-Additionally, to use administrative commands like to delete backups, the `sudo` system needs to be setup to allow the application running user to run the `/usr/bin/tmutil` program as root.
+Additionally, to use administrative commands like to delete backups, the `sudo` system needs to be setup to allow the user to run the `/usr/bin/tmutil` program as root.
 
 For more info on `sudo`, see:
 
