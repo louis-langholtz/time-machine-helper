@@ -392,7 +392,7 @@ void PathActionDialog::setProcessFinished(int code, int status)
                 .arg(code).arg(errorString(noExplanationMsg)));
         break;
     }
-    delete this->process;
+    this->process->deleteLater();
     this->process = nullptr;
 }
 

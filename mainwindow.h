@@ -11,6 +11,7 @@
 #include <QPair>
 #include <QString>
 #include <QVariant>
+#include <QErrorMessage>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -57,6 +58,7 @@ signals:
 
 private slots:
     void handleQueryFailedToStart(const QString &text);
+    void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
     void handleTmStatusNoPlist();
     void handleTmStatusReaderError(int lineNumber,
@@ -65,6 +67,7 @@ private slots:
     void handleTmStatusFinished(int code, int status);
 
 private:
+    QErrorMessage errorMessage;
     Ui::MainWindow *ui{};
     QTimer *timer{};
     QString tmUtilPath;

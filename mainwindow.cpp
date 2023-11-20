@@ -263,6 +263,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::updateMountPointsView);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
             this, &MainWindow::showStatus);
+    connect(this->ui->destinationsWidget, &DestinationsWidget::gotDestinations,
+            this, &MainWindow::handleGotDestinations);
 
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
             this, &MainWindow::selectedPathsChanged);
@@ -297,7 +299,8 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
         }
     }
     {
-        constexpr auto policy = QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+        constexpr auto policy =
+            QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
         const auto pathsAdd = findAddableTopLevelItems(
             *(this->ui->mountPointsWidget), paths);
         for (const auto& path: pathsAdd) {
@@ -317,7 +320,8 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
         QMessageBox msgBox;
         msgBox.setIcon(QMessageBox::Critical);
         msgBox.setText("No destination mounted!");
-        msgBox.setInformativeText("No backups or restores are currently possible!");
+        msgBox.setInformativeText(
+            "No backups or restores are currently possible!");
         msgBox.exec();
     }
 }
@@ -344,7 +348,8 @@ void MainWindow::reportDir(QTreeWidgetItem *item,
 
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setTextFormat(Qt::TextFormat::MarkdownText); // doesn't work on macos?
+    // Following doesn't work on macos?
+    msgBox.setTextFormat(Qt::TextFormat::MarkdownText);
     msgBox.setWindowTitle("Error!");
     msgBox.setText(QString("Unable to list contents of directory `%1`")
                        .arg(pathName));
@@ -438,7 +443,8 @@ void MainWindow::addDirEntry(
     if (isBackup) {
         auto ok = false;
         const auto t = parent->text(backupsCountCol);
-        parent->setText(backupsCountCol, QString::number(t.toLongLong(&ok) + 1));
+        parent->setText(backupsCountCol,
+                        QString::number(t.toLongLong(&ok) + 1));
     }
 }
 
@@ -675,6 +681,22 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     }
 }
 
+void MainWindow::handleGotDestinations(int count)
+{
+    if (count == 0) {
+        this->ui->destinationInfoLabel->setText(
+            tr("Destination Info - no destinations appear setup!"));
+        errorMessage.showMessage(
+            QString("%1 %2")
+                .arg("No destinations appear setup.",
+                     "Add a destination to Time Machine as soon as you can."));
+    }
+    else {
+        this->ui->destinationInfoLabel->setText(
+            tr("Destination Info"));
+    }
+}
+
 void MainWindow::handleTmutilPathChange(const QString &path)
 {
     qDebug() << "MainWindow::handleTmutilPathChange called:"
@@ -703,7 +725,8 @@ void MainWindow::handleTmStatusNoPlist()
     QMessageBox msgBox;
     msgBox.setStandardButtons(QMessageBox::Open);
     msgBox.setOptions(QMessageBox::Option::DontUseNativeDialog);
-    msgBox.setWindowTitle("Error!"); // macOS ignored but set in case changes
+    // macOS ignores following, but set in case changes
+    msgBox.setWindowTitle("Error!");
     msgBox.setIcon(QMessageBox::Critical);
     msgBox.setText("Not getting status info!");
     const auto infoText =
@@ -721,9 +744,10 @@ void MainWindow::handleTmStatusReaderError(
     qDebug() << "handleTmStatusReaderError called:" << text;
     qDebug() << "line #" << lineNumber;
     qDebug() << "error" << error;
-    this->showStatus(QString("Error reading Time Machine status: line %1, %2")
-                         .arg(lineNumber)
-                         .arg(text));
+    this->showStatus(
+        QString("Error reading Time Machine status: line %1, %2")
+            .arg(lineNumber)
+            .arg(text));
 }
 
 void MainWindow::handleTmStatusFinished(int code, int status)
@@ -732,13 +756,15 @@ void MainWindow::handleTmStatusFinished(int code, int status)
     case QProcess::NormalExit:
         break;
     case QProcess::CrashExit:
-        this->showStatus(QString("When getting status: %1 exited abnormally")
-                             .arg(toolName));
+        this->showStatus(
+            QString("When getting status: %1 exited abnormally")
+                .arg(toolName));
         return;
     }
     if (code != 0) {
-        this->showStatus(QString("When getting status: %1 exited with code %2")
-                             .arg(toolName).arg(code));
+        this->showStatus(
+            QString("When getting status: %1 exited with code %2")
+                .arg(toolName).arg(code));
     }
 }
 

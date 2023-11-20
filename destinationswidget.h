@@ -28,21 +28,25 @@ signals:
     void gotError(const QString& status);
     void failedToStartQuery(const QString& text);
     void wrongQueryInfo(const QString& detail);
+    void gotDestinations(int count);
 
 private slots:
     void updateUI(const plist_object &plist);
     void handleReaderError(int lineNumber, int error, const QString& text);
     void handleErrorOccurred(int error, const QString& text);
-    void handleQueryFinished(int exitCode, int exitStatus);
+    void handleQueryFinished(int code, int status);
 
 private:
-    QTableWidgetItem *createdItem(int row, int column);
+    QTableWidgetItem *createdItem(
+        int row, int column, Qt::Alignment textAlign = Qt::AlignCenter);
     void update(const std::vector<plist_dict>& destinations);
     void update(const plist_array &plist);
     void update(const plist_dict &plist);
+    int findRowWithMountPoint(const QString& key) const;
 
     QString tmuPath{"tmutil"};
     QBrush saveBg;
+    plist_dict lastStatus;
 };
 
 #endif // DESTINATIONSWIDGET_H

@@ -18,6 +18,11 @@ constexpr auto tmutilDestInfoVerb = "destinationinfo";
 constexpr auto tmutilXmlOption    = "-X";
 constexpr auto noExplanationMsg = "no explanation";
 
+constexpr auto itemFlags =
+    Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
+
+constexpr auto gigabyte = 1000 * 1000 * 1000;
+
 auto toPlistDictVector(const plist_array& array)
     -> std::vector<plist_dict>
 {
@@ -28,6 +33,50 @@ auto toPlistDictVector(const plist_array& array)
     return result;
 }
 
+QString textForBackupStatus(
+    const plist_dict& status,
+    const std::string& mp)
+{
+    // When running...
+    const auto phase = get<plist_string>(status, "BackupPhase");
+    const auto destID = get<plist_string>(status, "DestinationID");
+    const auto destMP = get<plist_string>(status, "DestinationMountPoint");
+    const auto prog = get<plist_dict>(status, "Progress");
+
+    auto result = QString{};
+    if (destMP && destMP == mp) {
+        result.append(QString::fromStdString(phase.value_or("")));
+        if (prog) {
+            if (const auto v = get<plist_real>(*prog, "Percent")) {
+                if (!result.isEmpty()) {
+                    result.append(' ');
+                }
+                result.append(QString::number(*v * 100.0, 'f', 1));
+                result.append('%');
+            }
+        }
+    }
+    return result;
+}
+
+QString toolTipForBackupStatus(
+    const plist_dict& status,
+    const std::string& mp)
+{
+    // When running...
+    const auto destMP = get<plist_string>(status, "DestinationMountPoint");
+    if (destMP && destMP == mp) {
+        const auto prog = get<plist_dict>(status, "Progress");
+        if (prog) {
+            if (const auto v = get<plist_real>(*prog, "TimeRemaining")) {
+                return QString("About %1 minutes remaining.")
+                    .arg(QString::number(*v / 60, 'f', 1));
+            }
+        }
+    }
+    return {};
+}
+
 }
 
 DestinationsWidget::DestinationsWidget(QWidget *parent)
@@ -35,7 +84,7 @@ DestinationsWidget::DestinationsWidget(QWidget *parent)
 {
     if (const auto item = this->horizontalHeaderItem(3)) {
         this->saveBg = item->background();
-        item->setBackground(QBrush(QColor(255, 0, 0, 255)));
+        item->setBackground(QBrush(QColor(255, 0, 0, 100)));
     }
 }
 
@@ -50,14 +99,16 @@ void DestinationsWidget::setTmutilPath(const QString& path)
 }
 
 QTableWidgetItem *DestinationsWidget::createdItem(
-    int row, int column)
+    int row, int column, Qt::Alignment textAlign)
 {
-    auto i = this->item(row, column);
-    if (!i) {
-        i = new QTableWidgetItem;
-        this->setItem(row, column, i);
+    auto item = this->item(row, column);
+    if (!item) {
+        item = new QTableWidgetItem;
+        item->setFlags(itemFlags);
+        item->setTextAlignment(textAlign);
+        this->setItem(row, column, item);
     }
-    return i;
+    return item;
 }
 
 void DestinationsWidget::queryDestinations()
@@ -74,7 +125,8 @@ void DestinationsWidget::queryDestinations()
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmuPath,
-                   QStringList() << tmutilDestInfoVerb << tmutilXmlOption);
+                   QStringList() << tmutilDestInfoVerb
+                                 << tmutilXmlOption);
 }
 
 void DestinationsWidget::handleStatus(const plist_object &plist)
@@ -85,43 +137,20 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
         qWarning() << "handleStatusPlist: plist value not dict!";
         return;
     }
-
-    const auto clientID = get<plist_string>(*dict, "ClientID");
-
-    // When running...
-    const auto phase = get<plist_string>(*dict, "BackupPhase");
-    const auto destID = get<plist_string>(*dict, "DestinationID");
-    const auto destMP = get<plist_string>(*dict, "DestinationMountPoint");
-    const auto fractOfProg = get<plist_real>(*dict, "FractionOfProgressBar");
-    const auto prog = get<plist_dict>(*dict, "Progress");
-
-    if (destMP) {
-        const auto rows = this->rowCount();
-        for (auto r = 0; r < rows; ++r) {
-            const auto cell = this->item(r, 3);
-            if (!cell || (cell->text() != destMP->c_str())) {
-                continue;
-            }
-            auto item = this->item(r, 6);
-            auto text = QString{};
-            auto tooltip = QString{};
-            text.append(QString::fromStdString(phase.value_or("")));
-            if (prog) {
-                if (const auto v = get<plist_real>(*prog, "Percent")) {
-                    if (!text.isEmpty()) {
-                        text.append(' ');
-                    }
-                    text.append(QString::number(*v * 100.0, 'f', 1));
-                    text.append('%');
-                }
-                if (const auto v = get<plist_real>(*prog, "TimeRemaining")) {
-                    tooltip = QString("About %1 minutes remaining.")
-                                  .arg(QString::number(*v / 60, 'f', 1));
-                }
-            }
-            item->setText(text);
-            item->setToolTip(tooltip);
+    this->lastStatus = *dict;
+    const auto rows = this->rowCount();
+    for (auto row = 0; row < rows; ++row) {
+        const auto mpItem = this->item(row, 3);
+        if (!mpItem) {
+            continue;
         }
+        const auto stItem = this->item(row, 6);
+        if (!stItem) {
+            continue;
+        }
+        const auto mountPoint = mpItem->text().toStdString();
+        stItem->setText(textForBackupStatus(*dict, mountPoint));
+        stItem->setToolTip(toolTipForBackupStatus(*dict, mountPoint));
     }
 }
 
@@ -157,115 +186,100 @@ void DestinationsWidget::handleErrorOccurred(int error, const QString &text)
     }
 }
 
-void DestinationsWidget::handleQueryFinished(int exitCode, int exitStatus)
+void DestinationsWidget::handleQueryFinished(int code, int status)
 {
-    if (exitStatus == QProcess::ExitStatus::CrashExit) {
-        const auto status =
+    if (status == QProcess::ExitStatus::CrashExit) {
+        const auto text =
             QString("'%1 %2 %3' exited abnormally.")
                 .arg(this->tmuPath,
                      tmutilDestInfoVerb,
                      tmutilXmlOption);
-        emit gotError(status);
+        emit gotError(text);
     }
-    else if (exitCode != 0) {
-        const auto status =
+    else if (code != 0) {
+        const auto text =
             QString("'%1 %2 %3' exit code was %4.")
                 .arg(this->tmuPath,
                      tmutilDestInfoVerb,
                      tmutilXmlOption,
-                     QString::number(exitCode));
-        emit gotError(status);
+                     QString::number(code));
+        emit gotError(text);
     }
 }
 
 void DestinationsWidget::update(
     const std::vector<plist_dict>& destinations)
 {
-    this->setRowCount(int(destinations.size()));
-    const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    constexpr auto itemFlags =
-        Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
+    const auto font =
+        QFontDatabase::systemFont(QFontDatabase::FixedFont);
     auto mountPoints = std::vector<std::string>{};
     auto row = 0;
-    if (destinations.empty()) {
-        if (const auto item = this->horizontalHeaderItem(3)) {
-            item->setBackground(Qt::GlobalColor::red);
-        }
-        QMessageBox msgBox;
-        msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setText("No destinations setup?!");
-        auto info = QString{};
-        info.append("No backups or restores are currently possible! ");
-        info.append("Add a destination to Time Machine as soon as you can.");
-        msgBox.setInformativeText(info);
-        msgBox.exec();
+    const auto rowCount = int(destinations.size());
+    this->setRowCount(rowCount);
+    emit gotDestinations(rowCount);
+    if (rowCount == 0) {
         return;
     }
+    this->setSortingEnabled(false);
     for (const auto& d: destinations) {
         {
             const auto item = this->createdItem(row, 0);
             const auto v = get<std::string>(d, "Name");
             item->setText(QString::fromStdString(v.value_or("")));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(itemFlags);
         }
         {
             const auto item = this->createdItem(row, 1);
             const auto v = get<std::string>(d, "ID");
             item->setText(QString::fromStdString(v.value_or("")));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(itemFlags);
         }
         {
             const auto item = this->createdItem(row, 2);
             const auto v = get<std::string>(d, "Kind");
             item->setText(QString::fromStdString(v.value_or("")));
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(itemFlags);
         }
         const auto mp = get<std::string>(d, "MountPoint");
         {
             if (const auto item = this->horizontalHeaderItem(3)) {
                 item->setBackground(this->saveBg);
             }
-            const auto item = this->createdItem(row, 3);
+            const auto textAlign = Qt::AlignLeft|Qt::AlignVCenter;
+            const auto item = this->createdItem(row, 3, textAlign);
             item->setText(QString::fromStdString(mp.value_or("")));
-            item->setTextAlignment(Qt::AlignLeft|Qt::AlignVCenter);
             item->setFont(font);
-            item->setFlags(itemFlags);
         }
         auto ec = std::error_code{};
         const auto si = mp
                             ? std::filesystem::space(*mp, ec)
                             : std::filesystem::space_info{};
         {
-            const auto item = this->createdItem(row, 4);
-            if (mp && !ec) {
-                const auto capacityInGb = double(si.capacity) / (1000 * 1000 * 1000);
-                item->setText(QString::number(capacityInGb, 'f', 2));
-            }
-            item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
-            item->setFlags(itemFlags);
+            const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
+            const auto item = this->createdItem(row, 4, textAlign);
+            const auto text = (mp && !ec)
+                ? QString::number(double(si.capacity) / gigabyte, 'f', 2)
+                : QString{};
+            item->setText(text);
         }
         {
-            const auto item = this->createdItem(row, 5);
-            if (mp && !ec) {
-                const auto freeInGb = double(si.free) / (1000 * 1000 * 1000);
-                item->setText(QString::number(freeInGb, 'f', 2));
-            }
-            item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
-            item->setFlags(itemFlags);
+            const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
+            const auto item = this->createdItem(row, 5, textAlign);
+            const auto text = (mp && !ec)
+                ? QString::number(double(si.free) / gigabyte, 'f', 2)
+                : QString{};
+            item->setText(text);
         }
         {
+            const auto status = this->lastStatus;
+            const auto mountPoint = mp.value_or("");
             const auto item = this->createdItem(row, 6);
-            item->setTextAlignment(Qt::AlignCenter);
-            item->setFlags(itemFlags);
+            item->setText(textForBackupStatus(status, mountPoint));
+            item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
         if (mp) {
             mountPoints.push_back(*mp);
         }
         ++row;
     }
+    this->setSortingEnabled(true);
     emit gotPaths(mountPoints);
 }
 
@@ -301,6 +315,18 @@ void DestinationsWidget::update(const plist_dict &plist)
                 .arg(it->second.value.index()));
     }
     update(*p);
+}
+
+int DestinationsWidget::findRowWithMountPoint(const QString &key) const
+{
+    const auto rows = this->rowCount();
+    for (auto r = 0; r < rows; ++r) {
+        const auto cell = this->item(r, 3);
+        if (cell && (cell->text() == key)) {
+            return r;
+        }
+    }
+    return -1;
 }
 
 void DestinationsWidget::updateUI(const plist_object &plist)

@@ -70,10 +70,15 @@ auto toPlistDate(const QString& string)
 }
 
 PlistProcess::PlistProcess(QObject *parent):
-    QObject{parent},
-    process{new QProcess{this}},
-    reader{new QXmlStreamReader{this->process}}
+    QObject{parent}
 {
+}
+
+void PlistProcess::start(const QString& program,
+                         const QStringList& args)
+{
+    this->process = new QProcess{this};
+    this->reader = new QXmlStreamReader{this->process};
     connect(this->process, &QProcess::started,
             this, &PlistProcess::handleStarted);
     connect(this->process, &QProcess::readyReadStandardOutput,
@@ -82,19 +87,7 @@ PlistProcess::PlistProcess(QObject *parent):
             this, &PlistProcess::handleErrorOccurred);
     connect(this->process, &QProcess::finished,
             this, &PlistProcess::handleProcessFinished);
-}
-
-bool PlistProcess::done() const noexcept
-{
-    return this->process == nullptr;
-}
-
-void PlistProcess::start(const QString& program,
-                         const QStringList& args)
-{
-    if (this->process) {
-        this->process->start(program, args, QProcess::ReadOnly);
-    }
+    this->process->start(program, args, QProcess::ReadOnly);
 }
 
 void PlistProcess::handleStarted()
@@ -112,9 +105,10 @@ void PlistProcess::handleErrorOccurred(int error)
 
 void PlistProcess::handleProcessFinished(int code, int status)
 {
-    delete this->process;
-    this->process = nullptr;
-    if (!data) {
+    if (data) {
+        emit gotPlist(*(this->data));
+    }
+    else {
         emit gotNoPlist();
     }
     emit finished(code, status);
@@ -122,8 +116,11 @@ void PlistProcess::handleProcessFinished(int code, int status)
 
 void PlistProcess::readMore()
 {
-    while (!reader->atEnd()) {
-        const auto tokenType = reader->readNext();
+    if (!this->reader) {
+        return;
+    }
+    while (!this->reader->atEnd()) {
+        const auto tokenType = this->reader->readNext();
         switch (tokenType) {
         case QXmlStreamReader::NoToken:
             qDebug() << "PlistProcess no token";
@@ -137,7 +134,7 @@ void PlistProcess::readMore()
         case QXmlStreamReader::StartElement:
         {
             const auto elementType =
-                toPlistElementType(reader->name());
+                toPlistElementType(this->reader->name());
             switch (elementType) {
             case plist_element_type::none:
                 break;
@@ -165,7 +162,7 @@ void PlistProcess::readMore()
         case QXmlStreamReader::EndElement:
         {
             const auto elementType =
-                toPlistElementType(reader->name());
+                toPlistElementType(this->reader->name());
             switch (elementType) {
             case plist_element_type::none:
                 break;
@@ -174,10 +171,12 @@ void PlistProcess::readMore()
                 this->awaiting_handle.set_value(plist_variant{});
                 break;
             case plist_element_type::data:
-                this->awaiting_handle.set_value(toPlistData(currentText));
+                this->awaiting_handle
+                    .set_value(toPlistData(currentText));
                 break;
             case plist_element_type::date:
-                this->awaiting_handle.set_value(toPlistDate(currentText));
+                this->awaiting_handle
+                    .set_value(toPlistDate(currentText));
                 break;
             case plist_element_type::so_true:
                 this->awaiting_handle.set_value(plist_true{});
@@ -201,14 +200,13 @@ void PlistProcess::readMore()
             case plist_element_type::plist:
             {
                 this->data = this->task();
-                emit gotPlist(*(this->data));
                 break;
             }
             }
             break;
         }
         case QXmlStreamReader::Characters:
-            currentText = reader->text().toString();
+            currentText = this->reader->text().toString();
             break;
         case QXmlStreamReader::Comment:
             break;
@@ -216,19 +214,19 @@ void PlistProcess::readMore()
             break;
         case QXmlStreamReader::EntityReference:
             qWarning() << "unexpected entity reference:"
-                       << reader->name();
+                       << this->reader->name();
             break;
         case QXmlStreamReader::ProcessingInstruction:
             qWarning() << "unexpected processing instruction:"
-                       << reader->text();
+                       << this->reader->text();
             break;
         }
     }
     using QXmlStreamReader::PrematureEndOfDocumentError;
-    if (reader->error() == PrematureEndOfDocumentError) {
+    if (this->reader->error() == PrematureEndOfDocumentError) {
         return;
     }
-    if (reader->hasError()) {
+    if (this->reader->hasError()) {
         emit gotReaderError(this->reader->lineNumber(),
                             this->reader->error(),
                             this->reader->errorString());

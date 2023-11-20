@@ -19,7 +19,6 @@ class PlistProcess : public QObject
 public:
     explicit PlistProcess(QObject *parent = nullptr);
 
-    bool done() const noexcept;
     std::optional<plist_object> plist() const;
 
     /// @brief Start specified program with given arguments.
