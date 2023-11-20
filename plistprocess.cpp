@@ -186,16 +186,16 @@ void PlistProcess::readMore()
                 break;
             case plist_element_type::real:
                 this->awaiting_handle
-                    .set_value(currentText.toDouble());
+                    .set_value(plist_real{currentText.toDouble()});
                 break;
             case plist_element_type::integer:
                 this->awaiting_handle
-                    .set_value(currentText.toInt());
+                    .set_value(plist_integer{currentText.toLongLong()});
                 break;
             case plist_element_type::string:
             case plist_element_type::key:
                 this->awaiting_handle
-                    .set_value(currentText.toStdString());
+                    .set_value(plist_string{currentText.toStdString()});
                 break;
             case plist_element_type::plist:
             {

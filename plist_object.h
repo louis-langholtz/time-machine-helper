@@ -2,6 +2,7 @@
 #define PLIST_OBJECT_H
 
 #include <chrono>
+#include <cstdint> // for std::int64_t
 #include <map>
 #include <optional>
 #include <string>
@@ -17,7 +18,7 @@ using plist_data = std::vector<char>;
 using plist_date = std::chrono::time_point<std::chrono::system_clock>;
 using plist_dict = std::map<std::string, plist_object>;
 using plist_real = double;
-using plist_integer = int;
+using plist_integer = std::int64_t;
 using plist_string = std::string;
 using plist_true = std::true_type;
 using plist_false = std::false_type;

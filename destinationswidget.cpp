@@ -18,6 +18,38 @@ constexpr auto tmutilDestInfoVerb = "destinationinfo";
 constexpr auto tmutilXmlOption    = "-X";
 constexpr auto noExplanationMsg = "no explanation";
 
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto backupPhaseKey = "BackupPhase";
+
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto destinationMountPointKey = "DestinationMountPoint";
+
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto destinationIdKey = "DestinationID";
+
+/// @note Toplevel key within the status plist dictionary. Its
+///   entry value is another dictionary with progress related details.
+constexpr auto progressKey = "Progress";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto timeRemainingKey = "TimeRemaining";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto percentKey = "Percent";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto bytesKey = "bytes";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto totalBytesKey = "totalBytes";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto numFilesKey = "files";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto totalFilesKey = "totalFiles";
+
+/// @brief Flags for <code>QTableWidgetItem</code> objects.
 constexpr auto itemFlags =
     Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
 
@@ -33,30 +65,34 @@ auto toPlistDictVector(const plist_array& array)
     return result;
 }
 
+QString decodeBackupPhase(const plist_string& name)
+{
+    if (name == "ThinningPostBackup") {
+        return "Thinning Post Backup";
+    }
+    return QString::fromStdString(name);
+}
+
 QString textForBackupStatus(
     const plist_dict& status,
     const std::string& mp)
 {
     // When running...
-    const auto phase = get<plist_string>(status, "BackupPhase");
-    const auto destID = get<plist_string>(status, "DestinationID");
-    const auto destMP = get<plist_string>(status, "DestinationMountPoint");
-    const auto prog = get<plist_dict>(status, "Progress");
-
-    auto result = QString{};
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
     if (destMP && destMP == mp) {
-        result.append(QString::fromStdString(phase.value_or("")));
-        if (prog) {
-            if (const auto v = get<plist_real>(*prog, "Percent")) {
-                if (!result.isEmpty()) {
-                    result.append(' ');
-                }
-                result.append(QString::number(*v * 100.0, 'f', 1));
-                result.append('%');
+        auto result = QStringList{};
+        if (const auto v = get<plist_string>(status, backupPhaseKey)) {
+            result << decodeBackupPhase(*v);
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_real>(*prog, percentKey)) {
+                result << QString("%1%")
+                              .arg(QString::number(*v * 100.0, 'f', 1));
             }
         }
+        return result.join(' ');
     }
-    return result;
+    return QString{};
 }
 
 QString toolTipForBackupStatus(
@@ -64,15 +100,31 @@ QString toolTipForBackupStatus(
     const std::string& mp)
 {
     // When running...
-    const auto destMP = get<plist_string>(status, "DestinationMountPoint");
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
     if (destMP && destMP == mp) {
-        const auto prog = get<plist_dict>(status, "Progress");
-        if (prog) {
-            if (const auto v = get<plist_real>(*prog, "TimeRemaining")) {
-                return QString("About %1 minutes remaining.")
-                    .arg(QString::number(*v / 60, 'f', 1));
+        auto result = QStringList{};
+        if (const auto v = get<plist_string>(status, destinationIdKey)) {
+            result << QString("Destination ID: %1.").arg(v->c_str());
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_integer>(*prog, bytesKey)) {
+                result << QString("Number of bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalBytesKey)) {
+                result << QString("Total bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, numFilesKey)) {
+                result << QString("Number of files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalFilesKey)) {
+                result << QString("Total files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_real>(*prog, timeRemainingKey)) {
+                result << QString("Allegedly, ~%1 minutes remaining.")
+                              .arg(QString::number(*v / 60, 'f', 1));
             }
         }
+        return result.join('\n');
     }
     return {};
 }

@@ -67,7 +67,7 @@ struct tmutil_destination {
     std::string id;
     std::string name;
     std::string kind;
-    int last_destination{};
+    std::int64_t last_destination{};
     std::filesystem::path mount_point;
 };
 
@@ -75,19 +75,19 @@ tmutil_destination to_tmutil_destination(
     const plist_dict& object)
 {
     auto result = tmutil_destination{};
-    if (const auto value = get<std::string>(object, "ID")) {
+    if (const auto value = get<plist_string>(object, "ID")) {
         result.id = *value;
     }
-    if (const auto value = get<std::string>(object, "Name")) {
+    if (const auto value = get<plist_string>(object, "Name")) {
         result.name = *value;
     }
-    if (const auto value = get<std::string>(object, "Kind")) {
+    if (const auto value = get<plist_string>(object, "Kind")) {
         result.kind = *value;
     }
-    if (const auto value = get<int>(object, "LastDestination")) {
+    if (const auto value = get<plist_integer>(object, "LastDestination")) {
         result.last_destination = *value;
     }
-    if (const auto value = get<std::string>(object, "MountPoint")) {
+    if (const auto value = get<plist_string>(object, "MountPoint")) {
         result.mount_point = *value;
     }
     return result;
