@@ -63,6 +63,11 @@ constexpr auto tmutilStatusVerb     = "status";
 
 constexpr auto backupsCountCol = 1;
 
+constexpr auto enabledAdminButtonStyle =
+    "QPushButton {color: rgb(180, 0, 0);}";
+constexpr auto disabledAdminButtonStyle =
+    "QPushButton {color: rgb(180, 100, 100);}";
+
 struct tmutil_destination {
     std::string id;
     std::string name;
@@ -227,6 +232,8 @@ MainWindow::MainWindow(QWidget *parent):
 
     this->ui->setupUi(this);
 
+    this->ui->deletingPushButton->setStyleSheet(
+        disabledAdminButtonStyle);
     this->ui->deletingPushButton->setDisabled(true);
     this->ui->uniqueSizePushButton->setDisabled(true);
     this->ui->restoringPushButton->setDisabled(true);
@@ -582,7 +589,12 @@ void MainWindow::verifySelectedPaths()
 void MainWindow::selectedPathsChanged()
 {
     qInfo() << "selectedPathsChanged called!";
-    const auto selectionIsEmpty = this->ui->mountPointsWidget->selectedItems().empty();
+    const auto selectionIsEmpty = this->ui->mountPointsWidget->
+                                  selectedItems().empty();
+    this->ui->deletingPushButton->setStyleSheet(
+        selectionIsEmpty?
+            disabledAdminButtonStyle:
+            enabledAdminButtonStyle);
     this->ui->deletingPushButton->setDisabled(selectionIsEmpty);
     this->ui->uniqueSizePushButton->setDisabled(selectionIsEmpty);
     this->ui->restoringPushButton->setDisabled(selectionIsEmpty);

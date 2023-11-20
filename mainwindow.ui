@@ -223,7 +223,7 @@
         <item>
          <widget class="QPushButton" name="deletingPushButton">
           <property name="toolTip">
-           <string>Deletes selected backups.</string>
+           <string>Administrative action: deletes selected backups!</string>
           </property>
           <property name="text">
            <string>Delete Backups...</string>
