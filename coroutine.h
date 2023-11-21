@@ -108,12 +108,12 @@ public:
     coroutine_task(const coroutine_task&) = delete;
     coroutine_task& operator=(const coroutine_task&) = delete;
 
-    coroutine_task(coroutine_task&& other):
+    coroutine_task(coroutine_task&& other) noexcept:
         h_(std::exchange(other.h_, {}))
     {
     }
 
-    coroutine_task& operator=(coroutine_task&& other)
+    coroutine_task& operator=(coroutine_task&& other) noexcept
     {
         this->h_ = std::exchange(other.h_, {});
         return *this;
