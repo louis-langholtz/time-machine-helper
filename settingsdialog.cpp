@@ -16,6 +16,8 @@ namespace {
 
 constexpr auto tmutilSettingsKey = "tmutil_path";
 constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
+constexpr auto badValueStyle = "background-color: rgb(255, 170, 170);";
+constexpr auto goodValueStyle = "background-color: rgb(170, 255, 170);";
 
 constexpr auto filters = QDir::Executable|
                          QDir::AllEntries|
@@ -205,13 +207,13 @@ void SettingsDialog::handleTmutilPathChanged(const QString &value)
         qDebug() << "handleTmutilPathChanged acceptable:" << value;
         const auto changed = tmutilPath() != value;
         const auto styleSheet = changed
-                                    ? QString("background-color: rgb(170, 255, 170);")
-                                    : this->originalEditorStyleSheet;
+                ? QString(goodValueStyle)
+                : this->originalEditorStyleSheet;
         this->tmutilPathEditor->setStyleSheet(styleSheet);
     }
     else {
         qDebug() << "handleTmutilPathChanged unacceptable:" << value;
-        this->tmutilPathEditor->setStyleSheet("background-color: rgb(255, 170, 170);");
+        this->tmutilPathEditor->setStyleSheet(badValueStyle);
     }
 }
 

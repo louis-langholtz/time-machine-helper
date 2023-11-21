@@ -117,7 +117,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
                 }());
                 return frameLayout;
             }());
-            frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+            frame->setSizePolicy(QSizePolicy::Preferred,
+                                 QSizePolicy::Maximum);
             this->splitter->addWidget(frame);
         }
         {
@@ -184,6 +185,16 @@ QStringList PathActionDialog::paths() const
     return this->pathList;
 }
 
+QStringList PathActionDialog::firstArgs() const
+{
+    return this->beginList;
+}
+
+QStringList PathActionDialog::lastArgs() const
+{
+    return this->endList;
+}
+
 QString PathActionDialog::action() const
 {
     return this->verb;
@@ -219,22 +230,35 @@ void PathActionDialog::setText(const QString &text)
     this->textLabel->setText(text);
 }
 
+void PathActionDialog::setFirstArgs(const QStringList &args)
+{
+    this->beginList = args;
+}
+
 void PathActionDialog::setPaths(const QStringList &paths)
 {
     this->pathList = paths;
     this->pathsWidget->setHtml(toHtmlList(paths));
 #if 1
+    // todo: get this to work!
     const auto* doc = this->pathsWidget->document();
     const auto* sb = this->pathsWidget->horizontalScrollBar();
     const auto fm = QFontMetrics(this->pathsWidget->currentFont());
     const auto margins = this->pathsWidget->contentsMargins();
     const auto h = (doc->size().toSize().height()) +
-                   ((doc->documentMargin() + this->pathsWidget->frameWidth()) * 2) +
-                   margins.top() + margins.bottom() + (sb? sb->height(): 0);
+                   ((doc->documentMargin() +
+                   this->pathsWidget->frameWidth()) * 2) +
+                   margins.top() + margins.bottom() +
+                   (sb? sb->height(): 0);
     qDebug() << "setPaths setting max h:" << h;
     this->pathsWidget->setMaximumHeight(h);
     this->pathsWidget->viewport()->setMaximumHeight(h);
 #endif
+}
+
+void PathActionDialog::setLastArgs(const QStringList &args)
+{
+    this->endList = args;
 }
 
 void PathActionDialog::setAction(const QString &action)
@@ -299,13 +323,17 @@ void PathActionDialog::startAction()
         argList << this->tmuPath;
     }
     argList << this->verb;
-    for (const auto& path: pathList) {
+    argList << this->beginList;
+    for (const auto& path: this->pathList) {
         if (!this->pathPre.isEmpty()) {
             argList << this->pathPre;
         }
         argList << path;
     }
-    qInfo() << "startAction about to run:" << program << argList.join(' ');
+    argList << this->endList;
+    qInfo() << "startAction about to run:"
+            << program
+            << argList.join(' ');
 
     this->process = new QProcess(this);
     connect(this->process, &QProcess::errorOccurred,
@@ -332,11 +360,13 @@ void PathActionDialog::stopAction()
         qDebug() << "stopAction kill with:"
                  << this->stopSig
                  << this->verb;
-        const auto res = ::kill(this->process->processId(), this->stopSig);
+        const auto res = ::kill(this->process->processId(),
+                                this->stopSig);
         if (res == -1) {
             qWarning() << "kill failed:" << strerror(errno);
         }
-        QTimer::singleShot(1000, this->process, &QProcess::terminate);
+        QTimer::singleShot(1000, this->process,
+                           &QProcess::terminate);
         QTimer::singleShot(2000, this->process, &QProcess::kill);
     }
 }

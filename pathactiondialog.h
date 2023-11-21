@@ -26,7 +26,9 @@ public:
         const QString& fallback = {}) const;
 
     QString text() const;
+    QStringList firstArgs() const;
     QStringList paths() const;
+    QStringList lastArgs() const;
     QString action() const;
     bool asRoot() const noexcept;
     QProcessEnvironment environment() const;
@@ -35,7 +37,9 @@ public:
     int stopSignal() const noexcept;
 
     void setText(const QString& text);
+    void setFirstArgs(const QStringList& args);
     void setPaths(const QStringList& paths);
+    void setLastArgs(const QStringList& args);
     void setAction(const QString& action);
     void setAsRoot(bool asRoot);
     void setEnvironment(
@@ -67,7 +71,9 @@ private:
     QStatusBar* statusBar{};
     QProcess* process{};
     QProcessEnvironment env;
+    QStringList beginList;
     QStringList pathList;
+    QStringList endList;
     QString tmuPath{"tmutil"};
     QString pathPre{};
     QString sudoPath{"sudo"};

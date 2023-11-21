@@ -21,6 +21,7 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QXmlStreamReader>
+#include <QFileDialog>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -59,6 +60,7 @@ constexpr auto cantListDirWarning = "Warning: unable to list contents of this di
 constexpr auto tmutilDeleteVerb     = "delete";
 constexpr auto tmutilVerifyVerb     = "verifychecksums";
 constexpr auto tmutilUniqueSizeVerb = "uniquesize";
+constexpr auto tmutilRestoreVerb    = "restore";
 constexpr auto tmutilStatusVerb     = "status";
 
 constexpr auto backupsCountCol = 1;
@@ -540,7 +542,8 @@ void MainWindow::deleteSelectedPaths()
 
 void MainWindow::uniqueSizeSelectedPaths()
 {
-    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    const auto selectedPaths = toStringList(
+        this->ui->mountPointsWidget->selectedItems());
     qInfo() << "uniqueSizeSelectedPaths called for" << selectedPaths;
 
     const auto dialog = new PathActionDialog{this};
@@ -552,7 +555,8 @@ void MainWindow::uniqueSizeSelectedPaths()
     }
     dialog->setTmutilPath(this->tmUtilPath);
     dialog->setWindowTitle("Unique Size Dialog");
-    dialog->setText("Are you sure that you want to uniquely size the following paths?");
+    dialog->setText(
+        "Are you sure that you want to uniquely size the following paths?");
     dialog->setPaths(selectedPaths);
     dialog->setAction(tmutilUniqueSizeVerb);
     //dialog->setAsRoot(true);
@@ -561,13 +565,52 @@ void MainWindow::uniqueSizeSelectedPaths()
 
 void MainWindow::restoreSelectedPaths()
 {
-    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    const auto selectedPaths = toStringList(
+        this->ui->mountPointsWidget->selectedItems());
     qInfo() << "restoreSelectedPaths called for" << selectedPaths;
+
+    QFileDialog dstDialog{this};
+    dstDialog.setWindowTitle(tr("Destination Directory"));
+    dstDialog.setDirectory("/");
+    dstDialog.setLabelText(QFileDialog::Accept, "Select Destination");
+    dstDialog.setFileMode(QFileDialog::Directory);
+    //dialog.setOptions(QFileDialog::DontUseNativeDialog);
+    dstDialog.setFilter(QDir::Hidden|QDir::Dirs|QDir::Drives);
+    dstDialog.setNameFilter("*");
+    if (!dstDialog.exec()) {
+        return;
+    }
+    const auto files = dstDialog.selectedFiles();
+    qDebug() << "openFileDialog:" << files;
+    if (files.isEmpty()) {
+        return;
+    }
+    qDebug() << files;
+
+    // open path action dialog.
+    const auto dialog = new PathActionDialog{this};
+    {
+        // Ensures output of tmutil shown as soon as available.
+        auto env = dialog->environment();
+        env.insert("STDBUF", "L"); // see "man 3 setbuf"
+        dialog->setEnvironment(env);
+    }
+    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setWindowTitle("Restore Dialog");
+    dialog->setText(QString(
+        "Are you sure that you want to restore the following paths to '%2'?")
+                        .arg(files.first()));
+    dialog->setFirstArgs(QStringList() << "-v");
+    dialog->setPaths(selectedPaths);
+    dialog->setLastArgs(files);
+    dialog->setAction(tmutilRestoreVerb);
+    dialog->show();
 }
 
 void MainWindow::verifySelectedPaths()
 {
-    const auto selectedPaths = toStringList(this->ui->mountPointsWidget->selectedItems());
+    const auto selectedPaths = toStringList(
+        this->ui->mountPointsWidget->selectedItems());
     qInfo() << "verifySelectedPaths called for" << selectedPaths;
 
     const auto dialog = new PathActionDialog{this};
@@ -579,7 +622,8 @@ void MainWindow::verifySelectedPaths()
     }
     dialog->setTmutilPath(this->tmUtilPath);
     dialog->setWindowTitle("Verify Dialog");
-    dialog->setText("Are you sure that you want to verify the following paths?");
+    dialog->setText(
+        "Are you sure that you want to verify the following paths?");
     dialog->setPaths(selectedPaths);
     dialog->setAction(tmutilVerifyVerb);
     //dialog->setAsRoot(true);
@@ -588,7 +632,6 @@ void MainWindow::verifySelectedPaths()
 
 void MainWindow::selectedPathsChanged()
 {
-    qInfo() << "selectedPathsChanged called!";
     const auto selectionIsEmpty = this->ui->mountPointsWidget->
                                   selectedItems().empty();
     this->ui->deletingPushButton->setStyleSheet(
