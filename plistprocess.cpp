@@ -51,7 +51,7 @@ auto toPlistData(const QString& string)
     -> plist_data
 {
     const auto ba = QByteArray::fromBase64(string.toUtf8());
-    return plist_data(ba.begin(), ba.end());
+    return {ba.begin(), ba.end()};
 }
 
 auto toPlistDate(const QString& string)

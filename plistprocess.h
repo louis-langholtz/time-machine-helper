@@ -15,11 +15,14 @@ class QXmlStreamReader;
 
 class PlistProcess : public QObject
 {
+    // NOLINTBEGIN
     Q_OBJECT
+    // NOLINTEND
+
 public:
     explicit PlistProcess(QObject *parent = nullptr);
 
-    std::optional<plist_object> plist() const;
+    [[nodiscard]] auto plist() const -> std::optional<plist_object>;
 
     /// @brief Start specified program with given arguments.
     /// @post <code>errorOccurred(int, const QString&)</code> will
@@ -54,7 +57,7 @@ signals:
     /// @param lineNumber number of the line of the error.
     /// @param error A <code>QXmlStreamReader::Error</code> value.
     /// @param text Error string from underlying XML reader.
-    void gotReaderError(int lineNumber,
+    void gotReaderError(qint64 lineNumber,
                         int error,
                         const QString& text);
 
@@ -72,13 +75,12 @@ signals:
     /// @param status A @c QProcess::ExitStatus value.
     void finished(int code, int status);
 
-private slots:
+private:
     void handleStarted();
     void handleErrorOccurred(int error);
     void handleProcessFinished(int code, int status);
     void readMore();
 
-private:
     std::optional<plist_object> data;
     QProcess *process{};
     QXmlStreamReader *reader{};

@@ -13,22 +13,24 @@ struct returning_promise {
 
     using promise_type = typename TaskType::promise_type;
 
-    TaskType get_return_object() {
+    auto get_return_object() -> TaskType {
         return {std::coroutine_handle<promise_type>::from_promise(
             static_cast<promise_type&>(*this))};
     }
 
-    std::suspend_never initial_suspend() { return {}; }
+    auto initial_suspend() -> std::suspend_never { return {}; }
 
     struct final_awaiter
     {
-        bool await_ready() noexcept {
+        auto await_ready() noexcept -> bool {
             return false;
         }
-        void await_resume() noexcept {
+
+        auto await_resume() noexcept -> void {
         }
-        std::coroutine_handle<>
-        await_suspend(std::coroutine_handle<promise_type> h) noexcept
+
+        auto await_suspend(std::coroutine_handle<promise_type> h) noexcept
+            -> std::coroutine_handle<>
         {
             // From https://en.cppreference.com/w/cpp/coroutine/noop_coroutine:
             // final_awaiter::await_suspend is called when the execution
@@ -46,7 +48,7 @@ struct returning_promise {
         }
     };
 
-    final_awaiter final_suspend() noexcept {
+    auto final_suspend() noexcept -> final_awaiter {
         return {};
     }
 
@@ -67,7 +69,7 @@ struct await_handle {
     std::optional<AwaitType> value_to_await;
     std::coroutine_handle<> previous;
 
-    bool await_ready()
+    auto await_ready() -> bool
     {
         return this->value_to_await.has_value();
     }
@@ -77,7 +79,7 @@ struct await_handle {
         this->previous = h;
     }
 
-    AwaitType await_resume()
+    auto await_resume() -> AwaitType
     {
         assert(this->value_to_await.has_value());
         auto tmp = *this->value_to_await;
@@ -85,7 +87,7 @@ struct await_handle {
         return tmp;
     }
 
-    void set_value(AwaitType value)
+    auto set_value(AwaitType value) -> void
     {
         this->value_to_await = std::move(value);
         if (this->previous && !this->previous.done()) {
@@ -106,14 +108,14 @@ public:
     }
 
     coroutine_task(const coroutine_task&) = delete;
-    coroutine_task& operator=(const coroutine_task&) = delete;
+    auto operator=(const coroutine_task&) -> coroutine_task& = delete;
 
     coroutine_task(coroutine_task&& other) noexcept:
         h_(std::exchange(other.h_, {}))
     {
     }
 
-    coroutine_task& operator=(coroutine_task&& other) noexcept
+    auto operator=(coroutine_task&& other) noexcept -> coroutine_task&
     {
         this->h_ = std::exchange(other.h_, {});
         return *this;
@@ -130,10 +132,10 @@ public:
 
     struct awaiter
     {
-        bool await_ready() {
+        auto await_ready() -> bool {
             return false;
         }
-        ReturnType await_resume() {
+        auto await_resume() -> ReturnType {
             return coro.promise().value_to_return;
         }
         void await_suspend(std::coroutine_handle<> h)
@@ -142,7 +144,10 @@ public:
         }
         std::coroutine_handle<promise_type> coro;
     };
-    awaiter operator co_await() { return awaiter{h_}; }
+
+    auto operator co_await() -> awaiter {
+        return awaiter{h_};
+    }
 
     auto operator()() -> ReturnType
     {

@@ -9,9 +9,9 @@
 
 namespace {
 
-static constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
-static constexpr auto backupAttrPrefix = "com.apple.backup.";
-static constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
+constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
+constexpr auto backupAttrPrefix = "com.apple.backup.";
+constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
 
 // From https://stackoverflow.com/a/236803/7410358
 template <typename Out>
@@ -24,15 +24,17 @@ void split(const std::string &s, char delim, Out result) {
 }
 
 // From https://stackoverflow.com/a/236803/7410358
-std::vector<std::string> split(const std::string &s, char delim) {
+auto split(const std::string &s, char delim)
+    -> std::vector<std::string>
+{
     std::vector<std::string> elems;
     split(s, delim, std::back_inserter(elems));
     return elems;
 }
 
-QMap<QString, QByteArray> getInterestingAttrs(
-    const std::filesystem::path& path,
-    bool &hasTimeMachineAttrs)
+auto getInterestingAttrs(const std::filesystem::path &path,
+                         bool &hasTimeMachineAttrs)
+    -> QMap<QString, QByteArray>
 {
     auto attrs = QMap<QString, QByteArray>{};
     const auto size = listxattr(path.c_str(), nullptr, 0, 0);
@@ -53,19 +55,13 @@ QMap<QString, QByteArray> getInterestingAttrs(
     }
     const auto xattrNames = split(nameBuffer, '\0');
     for (const auto& attrName: xattrNames) {
-        do {
-            if (attrName.starts_with(timeMachineAttrPrefix)) {
-                hasTimeMachineAttrs = true;
-                break;
-            }
-            if (attrName.starts_with(backupAttrPrefix)) {
-                break;
-            }
-            if (attrName.starts_with(backupdAttrPrefix)) {
-                break;
-            }
+        if (attrName.starts_with(timeMachineAttrPrefix)) {
+            hasTimeMachineAttrs = true;
+        }
+        else if (!attrName.starts_with(backupAttrPrefix) &&
+                 !attrName.starts_with(backupdAttrPrefix)) {
             continue;
-        } while (false);
+        }
         const auto reserveSize =
             getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
         if (reserveSize < 0) {
@@ -106,9 +102,9 @@ void DirectoryReader::run() {
     }
 
     for (const auto& dirEntryIter: it) {
-        const auto path = dirEntryIter.path();
+        const auto& path = dirEntryIter.path();
         const auto filename = path.filename().string();
-        if (filename.compare(".") == 0 || filename.compare("..") == 0) {
+        if ((filename == ".") || (filename == "..")) {
             continue;
         }
         auto hasTmAttrs = false;

@@ -2,8 +2,8 @@
 
 #include "plist_builder.h"
 
-coroutine_task<plist_array> plist_array_builder(
-    await_handle<plist_variant> *awaiting_handle)
+auto plist_array_builder(await_handle<plist_variant> *awaiting_handle)
+    -> coroutine_task<plist_array>
 {
     auto result = plist_array{};
     while (const auto object = co_await plist_builder(awaiting_handle)) {
@@ -12,8 +12,8 @@ coroutine_task<plist_array> plist_array_builder(
     co_return result;
 }
 
-coroutine_task<plist_dict> plist_dict_builder(
-    await_handle<plist_variant> *awaiting_handle)
+auto plist_dict_builder(await_handle<plist_variant> *awaiting_handle)
+    -> coroutine_task<plist_dict>
 {
     auto result = plist_dict{};
     for (;;) {
@@ -31,8 +31,8 @@ coroutine_task<plist_dict> plist_dict_builder(
     co_return result;
 }
 
-coroutine_task<plist_object> plist_builder(
-    await_handle<plist_variant> *awaiting_handle)
+auto plist_builder(await_handle<plist_variant> *awaiting_handle)
+    -> coroutine_task<plist_object>
 {
     auto result = plist_object{};
     const auto variant = co_await *awaiting_handle;

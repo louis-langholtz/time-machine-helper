@@ -6,39 +6,58 @@
 
 class QLabel;
 class QLineEdit;
+class QSpinBox;
 class QPushButton;
 class ExecutableValidator;
 
 class SettingsDialog : public QDialog
 {
+    // NOLINTBEGIN
     Q_OBJECT
+    // NOLINTEND
+
 public:
-    static QString tmutilPath();
+    static auto tmutilPath() -> QString;
+    static auto tmutilStatInterval() -> int;
+    static auto tmutilDestInterval() -> int;
 
     explicit SettingsDialog(QWidget *parent = nullptr);
 
     void closeEvent(QCloseEvent *event) override;
     void reject() override;
 
-    bool allAcceptable() const;
-    bool anyChanged() const;
+    [[nodiscard]] auto allAcceptable() const -> bool;
+    [[nodiscard]] auto anyChanged() const -> bool;
 
 signals:
     void tmutilPathChanged(const QString& path);
+    void tmutilStatusIntervalChanged(int newMsecs);
+    void tmutilDestinationsIntervalChanged(int newMsecs);
 
-private slots:
+private:
     void openTmutilPathDialog();
     void handleTmutilPathFinished();
     void handleTmutilPathChanged(const QString& value);
+    void handleStatTimeChanged(int value);
+    void handleDestTimeChanged(int value);
     void save();
 
-private:
-    QString originalEditorStyleSheet;
     QPushButton *saveButton{};
     QPushButton *closeButton{};
-    QLabel *tmutilPathLabel{};
-    QLineEdit *tmutilPathEditor{};
-    QPushButton *tmutilPathButton{};
+
+    QString origPathStyle;
+    QLabel *tmutilPathLbl{};
+    QLineEdit *tmutilPathEdit{};
+    QPushButton *tmutilPathBtn{};
+
+    QString origStatTimeStyle;
+    QLabel *tmutilStatTimeLbl{};
+    QSpinBox *tmutilStatTimeEdit{};
+
+    QString origDestTimeStyle;
+    QLabel *tmutilDestTimeLbl{};
+    QSpinBox *tmutilDestTimeEdit{};
+
     ExecutableValidator *tmutilPathValidator{};
 };
 

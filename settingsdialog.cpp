@@ -1,6 +1,6 @@
 #include <QSettings>
 #include <QVBoxLayout>
-#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QValidator>
@@ -9,13 +9,24 @@
 #include <QPushButton>
 #include <QDir>
 #include <QCloseEvent>
+#include <QSpinBox>
 
 #include "settingsdialog.h"
 
 namespace {
 
-constexpr auto tmutilSettingsKey = "tmutil_path";
+constexpr auto tmutilPathKey = "tmutilPath";
+constexpr auto tmutilStatTimeKey = "tmutilStatusInterval";
+constexpr auto tmutilDestTimeKey = "tmutilDestinationsInterval";
+
+constexpr auto minimumTimeMsecs = 250;
+constexpr auto maximumTimeMsecs = 60000;
+constexpr auto timeStepMsecs = 250;
+
 constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
+constexpr auto defaultTmutilStatTime = 1000;
+constexpr auto defaultTmutilDestTime = 2500;
+
 constexpr auto badValueStyle = "background-color: rgb(255, 170, 170);";
 constexpr auto goodValueStyle = "background-color: rgb(170, 255, 170);";
 
@@ -25,7 +36,7 @@ constexpr auto filters = QDir::Executable|
                          QDir::Hidden|
                          QDir::NoDotAndDotDot;
 
-QSettings &settings()
+auto settings() -> QSettings &
 {
     static QSettings the;
     return the;
@@ -36,15 +47,15 @@ QSettings &settings()
 class ExecutableValidator: public QValidator {
 public:
     ExecutableValidator(QObject *parent = nullptr);
-    State validate(QString &, int &) const;
+    auto validate(QString &, int &) const -> State override;
 };
 
 ExecutableValidator::ExecutableValidator(
     QObject *parent) : QValidator(parent)
 {}
 
-QValidator::State ExecutableValidator::validate(
-    QString &input, int &pos) const
+auto ExecutableValidator::validate(QString &input, int &pos) const
+    -> QValidator::State
 {
     const auto info = QFileInfo(input);
     if (info.isFile() && info.isExecutable()) {
@@ -67,8 +78,8 @@ QValidator::State ExecutableValidator::validate(
     }
     qDebug() << "base is:" << base;
     qDebug() << "pre is:" << pre;
-    do {
-        auto dir = QDir(base);
+    while (true) {
+        const auto dir = QDir(base);
         const auto nameFilter = QString("%1*").arg(pre);
         qDebug() << "nameFilter:" << nameFilter;
         const auto choices = dir.entryList(QStringList{nameFilter},
@@ -82,48 +93,84 @@ QValidator::State ExecutableValidator::validate(
             break;
         }
         pre.chop(1);
-    } while (true);
+    }
     return QValidator::Invalid;
 }
 
-QString SettingsDialog::tmutilPath()
+auto SettingsDialog::tmutilPath() -> QString
 {
-    return settings().value(tmutilSettingsKey,
+    return settings().value(tmutilPathKey,
                             QString(defaultTmutilPath)).toString();
+}
+
+auto SettingsDialog::tmutilStatInterval() -> int
+{
+    return settings().value(tmutilStatTimeKey,
+                            defaultTmutilStatTime).toInt();
+}
+
+auto SettingsDialog::tmutilDestInterval() -> int
+{
+    return settings().value(tmutilDestTimeKey,
+                            defaultTmutilDestTime).toInt();
 }
 
 SettingsDialog::SettingsDialog(QWidget *parent):
     QDialog{parent},
     saveButton{new QPushButton{this}},
     closeButton{new QPushButton{this}},
-    tmutilPathLabel{new QLabel{this}},
-    tmutilPathEditor{new QLineEdit{this}},
-    tmutilPathButton{new QPushButton{this}},
+    tmutilPathLbl{new QLabel{this}},
+    tmutilPathEdit{new QLineEdit{this}},
+    tmutilPathBtn{new QPushButton{this}},
+    tmutilStatTimeLbl{new QLabel{this}},
+    tmutilStatTimeEdit{new QSpinBox{this}},
+    tmutilDestTimeLbl{new QLabel{this}},
+    tmutilDestTimeEdit{new QSpinBox{this}},
     tmutilPathValidator{new ExecutableValidator{this}}
 {
     this->saveButton->setObjectName("saveButton");
     this->saveButton->setText(tr("Save"));
     this->closeButton->setObjectName("closeButton");
     this->closeButton->setText(tr("Close"));
-    this->originalEditorStyleSheet = this->tmutilPathEditor->styleSheet();
+    this->origPathStyle = this->tmutilPathEdit->styleSheet();
     this->setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle(tr("Preferences"));
-    this->tmutilPathLabel->setText(tr("Time Machine utility"));
-    this->tmutilPathEditor->setValidator(
+    this->tmutilPathLbl->setText(tr("Time Machine utility"));
+    this->tmutilPathEdit->setValidator(
         this->tmutilPathValidator);
-    this->tmutilPathButton->setText(tr("Choose..."));
-    this->tmutilPathButton->setDefault(false);
-    this->tmutilPathButton->setAutoDefault(false);
-    this->setLayout([this]() -> QLayout* {
-        auto mainLayout = new QVBoxLayout;
-        mainLayout->addLayout([this]() -> QLayout*{
-            auto layout = new QHBoxLayout;
-            layout->addWidget(this->tmutilPathLabel);
-            layout->addWidget(this->tmutilPathEditor);
-            layout->addWidget(this->tmutilPathButton);
+    this->tmutilPathBtn->setText(tr("Choose..."));
+    this->tmutilPathBtn->setDefault(false);
+    this->tmutilPathBtn->setAutoDefault(false);
+
+    this->tmutilStatTimeLbl->setText(tr("Backup Status Interval"));
+    this->tmutilStatTimeEdit->setRange(minimumTimeMsecs, maximumTimeMsecs);
+    this->tmutilStatTimeEdit->setSingleStep(timeStepMsecs);
+    this->tmutilStatTimeEdit->setSuffix(" ms");
+    this->tmutilStatTimeEdit->setAlignment(Qt::AlignRight);
+    this->origStatTimeStyle = this->tmutilStatTimeEdit->styleSheet();
+
+    this->tmutilDestTimeLbl->setText(tr("Destinations Interval"));
+    this->tmutilDestTimeEdit->setRange(minimumTimeMsecs, maximumTimeMsecs);
+    this->tmutilDestTimeEdit->setSingleStep(timeStepMsecs);
+    this->tmutilDestTimeEdit->setSuffix(" ms");
+    this->tmutilDestTimeEdit->setAlignment(Qt::AlignRight);
+    this->origDestTimeStyle = this->tmutilDestTimeEdit->styleSheet();
+
+    this->setLayout([this]() {
+        auto *mainLayout = new QVBoxLayout;
+        mainLayout->addLayout([this]() {
+            auto layout = new QGridLayout;
+            layout->setColumnStretch(1, 1);
+            layout->addWidget(this->tmutilPathLbl, 0, 0);
+            layout->addWidget(this->tmutilPathEdit, 0, 1);
+            layout->addWidget(this->tmutilPathBtn, 0, 2);
+            layout->addWidget(this->tmutilStatTimeLbl, 1, 0);
+            layout->addWidget(this->tmutilStatTimeEdit, 1, 1);
+            layout->addWidget(this->tmutilDestTimeLbl, 2, 0);
+            layout->addWidget(this->tmutilDestTimeEdit, 2, 1);
             return layout;
         }());
-        mainLayout->addLayout([this]() -> QLayout*{
+        mainLayout->addLayout([this]() {
             auto layout = new QHBoxLayout;
             layout->addWidget(this->saveButton);
             layout->addWidget(this->closeButton);
@@ -137,14 +184,23 @@ SettingsDialog::SettingsDialog(QWidget *parent):
             this, &SettingsDialog::save);
     connect(this->closeButton, &QPushButton::clicked,
             this, &SettingsDialog::close);
-    connect(this->tmutilPathEditor, &QLineEdit::editingFinished,
+
+    connect(this->tmutilPathEdit, &QLineEdit::editingFinished,
             this, &SettingsDialog::handleTmutilPathFinished);
-    connect(this->tmutilPathEditor, &QLineEdit::textChanged,
+    connect(this->tmutilPathEdit, &QLineEdit::textChanged,
             this, &SettingsDialog::handleTmutilPathChanged);
-    connect(this->tmutilPathButton, &QPushButton::clicked,
+    connect(this->tmutilPathBtn, &QPushButton::clicked,
             this, &SettingsDialog::openTmutilPathDialog);
 
-    this->tmutilPathEditor->setText(tmutilPath());
+    connect(this->tmutilStatTimeEdit, &QSpinBox::valueChanged,
+            this, &SettingsDialog::handleStatTimeChanged);
+    connect(this->tmutilDestTimeEdit, &QSpinBox::valueChanged,
+            this, &SettingsDialog::handleDestTimeChanged);
+
+    this->tmutilPathEdit->setText(tmutilPath());
+    this->tmutilStatTimeEdit->setValue(tmutilStatInterval());
+    this->tmutilDestTimeEdit->setValue(tmutilDestInterval());
+
     this->saveButton->setEnabled(false);
     this->closeButton->setEnabled(allAcceptable());
 }
@@ -160,24 +216,36 @@ void SettingsDialog::closeEvent(QCloseEvent *event)
 
 void SettingsDialog::reject()
 {
-    if (!this->tmutilPathEditor->hasAcceptableInput()) {
+    if (!this->tmutilPathEdit->hasAcceptableInput()) {
         qDebug() << "SettingsDialog rejecting reject on account of bad input";
         return;
     }
     this->close();
 }
 
-bool SettingsDialog::allAcceptable() const
+auto SettingsDialog::allAcceptable() const -> bool
 {
-    if (!this->tmutilPathEditor->hasAcceptableInput()) {
+    if (!this->tmutilPathEdit->hasAcceptableInput()) {
+        return false;
+    }
+    if (!this->tmutilStatTimeEdit->hasAcceptableInput()) {
+        return false;
+    }
+    if (!this->tmutilDestTimeEdit->hasAcceptableInput()) {
         return false;
     }
     return true;
 }
 
-bool SettingsDialog::anyChanged() const
+auto SettingsDialog::anyChanged() const -> bool
 {
-    if (tmutilPath() != this->tmutilPathEditor->text()) {
+    if (tmutilPath() != this->tmutilPathEdit->text()) {
+        return true;
+    }
+    if (tmutilStatInterval() != this->tmutilStatTimeEdit->value()) {
+        return true;
+    }
+    if (tmutilDestInterval() != this->tmutilDestTimeEdit->value()) {
         return true;
     }
     return false;
@@ -185,8 +253,8 @@ bool SettingsDialog::anyChanged() const
 
 void SettingsDialog::handleTmutilPathFinished()
 {
-    const auto newValue = this->tmutilPathEditor->text();
-    if (this->tmutilPathEditor->hasAcceptableInput()) {
+    const auto newValue = this->tmutilPathEdit->text();
+    if (this->tmutilPathEdit->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathFinished good!";
         const auto oldValue = tmutilPath();
         if (oldValue != newValue) {
@@ -203,18 +271,44 @@ void SettingsDialog::handleTmutilPathChanged(const QString &value)
     this->closeButton->setEnabled(allAcceptable() && !anyChanged());
     this->saveButton->setEnabled(allAcceptable() && anyChanged());
 
-    if (this->tmutilPathEditor->hasAcceptableInput()) {
+    if (this->tmutilPathEdit->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathChanged acceptable:" << value;
         const auto changed = tmutilPath() != value;
         const auto styleSheet = changed
                 ? QString(goodValueStyle)
-                : this->originalEditorStyleSheet;
-        this->tmutilPathEditor->setStyleSheet(styleSheet);
+                                    : this->origPathStyle;
+        this->tmutilPathEdit->setStyleSheet(styleSheet);
     }
     else {
         qDebug() << "handleTmutilPathChanged unacceptable:" << value;
-        this->tmutilPathEditor->setStyleSheet(badValueStyle);
+        this->tmutilPathEdit->setStyleSheet(badValueStyle);
     }
+}
+
+void SettingsDialog::handleStatTimeChanged(int value)
+{
+    qDebug() << "SettingsDialog::handleStatTimeChanged called"
+             << value;
+    this->closeButton->setEnabled(allAcceptable() && !anyChanged());
+    this->saveButton->setEnabled(allAcceptable() && anyChanged());
+    const auto changed = tmutilStatInterval() != value;
+    const auto styleSheet = changed
+                                ? QString(goodValueStyle)
+                                : this->origStatTimeStyle;
+    this->tmutilStatTimeEdit->setStyleSheet(styleSheet);
+}
+
+void SettingsDialog::handleDestTimeChanged(int value)
+{
+    qDebug() << "SettingsDialog::handleDestTimeChanged called"
+             << value;
+    this->closeButton->setEnabled(allAcceptable() && !anyChanged());
+    this->saveButton->setEnabled(allAcceptable() && anyChanged());
+    const auto changed = tmutilDestInterval() != value;
+    const auto styleSheet = changed
+                                ? QString(goodValueStyle)
+                                : this->origDestTimeStyle;
+    this->tmutilDestTimeEdit->setStyleSheet(styleSheet);
 }
 
 void SettingsDialog::save()
@@ -227,11 +321,29 @@ void SettingsDialog::save()
     }
     {
         const auto oldValue = tmutilPath();
-        const auto newValue = this->tmutilPathEditor->text();
-        this->tmutilPathEditor->setStyleSheet(this->originalEditorStyleSheet);
+        const auto newValue = this->tmutilPathEdit->text();
+        this->tmutilPathEdit->setStyleSheet(this->origPathStyle);
         if (oldValue != newValue) {
-            settings().setValue(tmutilSettingsKey, newValue);
+            settings().setValue(tmutilPathKey, newValue);
             emit tmutilPathChanged(newValue);
+        }
+    }
+    {
+        const auto oldValue = tmutilStatInterval();
+        const auto newValue = this->tmutilStatTimeEdit->value();
+        this->tmutilStatTimeEdit->setStyleSheet(this->origStatTimeStyle);
+        if (oldValue != newValue) {
+            settings().setValue(tmutilStatTimeKey, newValue);
+            emit tmutilStatusIntervalChanged(newValue);
+        }
+    }
+    {
+        const auto oldValue = tmutilDestInterval();
+        const auto newValue = this->tmutilDestTimeEdit->value();
+        this->tmutilDestTimeEdit->setStyleSheet(this->origDestTimeStyle);
+        if (oldValue != newValue) {
+            settings().setValue(tmutilDestTimeKey, newValue);
+            emit tmutilDestinationsIntervalChanged(newValue);
         }
     }
     this->saveButton->setEnabled(false);
@@ -251,7 +363,7 @@ void SettingsDialog::openTmutilPathDialog()
         const auto files = dialog.selectedFiles();
         qDebug() << "openFileDialog:" << files;
         if (!files.isEmpty()) {
-            this->tmutilPathEditor->setText(files.first());
+            this->tmutilPathEdit->setText(files.first());
         }
     }
 }

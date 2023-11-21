@@ -4,13 +4,13 @@
 
 #include "mainwindow.h"
 
-int main(int argc, char *argv[])
+auto main(int argc, char *argv[]) -> int
 {
     QCoreApplication::setOrganizationName("louis-langholtz");
     QCoreApplication::setOrganizationDomain("louis-langholtz.github.io");
     QCoreApplication::setApplicationName("Time Machine Helper");
 
-    QApplication a(argc, argv);
+    const QApplication app(argc, argv);
 
     // Allow some standard library types as QVariant...
     qRegisterMetaType<std::filesystem::path>();
@@ -20,5 +20,5 @@ int main(int argc, char *argv[])
     MainWindow w;
     w.show();
 
-    return a.exec();
+    return QApplication::exec();
 }

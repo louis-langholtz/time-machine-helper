@@ -14,7 +14,10 @@ class QSplitter;
 
 class PathActionDialog : public QDialog
 {
+    // NOLINTBEGIN
     Q_OBJECT
+    // NOLINTEND
+
 public:
     explicit PathActionDialog(QWidget *parent = nullptr);
     ~PathActionDialog() override;
@@ -22,19 +25,18 @@ public:
     void closeEvent(QCloseEvent *event) override;
     void reject() override;
 
-    QString errorString(
-        const QString& fallback = {}) const;
-
-    QString text() const;
-    QStringList firstArgs() const;
-    QStringList paths() const;
-    QStringList lastArgs() const;
-    QString action() const;
-    bool asRoot() const noexcept;
-    QProcessEnvironment environment() const;
-    QString tmutilPath() const;
-    QString pathPrefix() const;
-    int stopSignal() const noexcept;
+    [[nodiscard]] auto errorString(
+        const QString &fallback = {}) const -> QString;
+    [[nodiscard]] auto text() const -> QString;
+    [[nodiscard]] auto firstArgs() const -> QStringList;
+    [[nodiscard]] auto paths() const -> QStringList;
+    [[nodiscard]] auto lastArgs() const -> QStringList;
+    [[nodiscard]] auto action() const -> QString;
+    [[nodiscard]] auto asRoot() const noexcept -> bool;
+    [[nodiscard]] auto environment() const -> QProcessEnvironment;
+    [[nodiscard]] auto tmutilPath() const -> QString;
+    [[nodiscard]] auto pathPrefix() const -> QString;
+    [[nodiscard]] auto stopSignal() const noexcept -> int;
 
     void setText(const QString& text);
     void setFirstArgs(const QStringList& args);
@@ -48,7 +50,6 @@ public:
     void setPathPrefix(const QString& prefix);
     void setStopSignal(int sig);
 
-public slots:
     void startAction();
     void stopAction();
     void readProcessOutput();
@@ -56,8 +57,6 @@ public slots:
     void setProcessStarted();
     void setProcessFinished(int code, int status);
     void setErrorOccurred(int error);
-
-signals:
 
 private:
     QSplitter* splitter{};

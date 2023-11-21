@@ -70,76 +70,7 @@ constexpr auto enabledAdminButtonStyle =
 constexpr auto disabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 100, 100);}";
 
-struct tmutil_destination {
-    std::string id;
-    std::string name;
-    std::string kind;
-    std::int64_t last_destination{};
-    std::filesystem::path mount_point;
-};
-
-tmutil_destination to_tmutil_destination(
-    const plist_dict& object)
-{
-    auto result = tmutil_destination{};
-    if (const auto value = get<plist_string>(object, "ID")) {
-        result.id = *value;
-    }
-    if (const auto value = get<plist_string>(object, "Name")) {
-        result.name = *value;
-    }
-    if (const auto value = get<plist_string>(object, "Kind")) {
-        result.kind = *value;
-    }
-    if (const auto value = get<plist_integer>(object, "LastDestination")) {
-        result.last_destination = *value;
-    }
-    if (const auto value = get<plist_string>(object, "MountPoint")) {
-        result.mount_point = *value;
-    }
-    return result;
-}
-
-std::optional<tmutil_destination> to_tmutil_destination(
-    const plist_object& object)
-{
-    if (const auto p = std::get_if<plist_dict>(&object.value)) {
-        return to_tmutil_destination(*p);
-    }
-    return {};
-}
-
-std::vector<tmutil_destination> to_tmutil_destinations(
-    const plist_array& array)
-{
-    auto result = std::vector<tmutil_destination>{};
-    for (const auto& element: array) {
-        if (const auto destination = to_tmutil_destination(element)) {
-            result.push_back(*destination);
-        }
-    }
-    return result;
-}
-
-std::vector<tmutil_destination> to_tmutil_destinations(
-    const plist_object& object)
-{
-    if (const auto p = std::get_if<plist_dict>(&object.value)) {
-        if (const auto it = p->find("Destinations"); it != p->end()) {
-            if (const auto q = std::get_if<plist_array>(&it->second.value)) {
-                return to_tmutil_destinations(*q);
-            }
-            qWarning() << "expected array";
-            return {};
-        }
-        qWarning() << "expected destinations";
-        return {};
-    }
-    qWarning() << "expected dict";
-    return {};
-}
-
-QStringList toStringList(const QList<QTreeWidgetItem*>& items)
+auto toStringList(const QList<QTreeWidgetItem *> &items) -> QStringList
 {
     QStringList result;
     for (const auto* item: items) {
@@ -149,9 +80,8 @@ QStringList toStringList(const QList<QTreeWidgetItem*>& items)
     return result;
 }
 
-std::optional<QByteArray> get(
-    const QMap<QString, QByteArray>& attrs,
-    const QString& key)
+auto get(const QMap<QString, QByteArray> &attrs, const QString &key)
+    -> std::optional<QByteArray>
 {
     const auto it = attrs.find(key);
     if (it != attrs.end()) {
@@ -160,7 +90,7 @@ std::optional<QByteArray> get(
     return {};
 }
 
-QString pathTooltip(const QMap<QString, QByteArray>& attrs)
+auto pathTooltip(const QMap<QString, QByteArray> &attrs) -> QString
 {
     if (const auto v = get(attrs, machineUuidAttr)) {
         return "This is a \"machine directory\".";
@@ -227,7 +157,8 @@ auto findDeletableTopLevelItems(
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
     ui(new Ui::MainWindow),
-    timer(new QTimer(this)),
+    destinationsTimer(new QTimer(this)),
+    statusTimer(new QTimer(this)),
     fileSystemWatcher(new QFileSystemWatcher(this))
 {
     this->pathFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -266,7 +197,8 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedPaths);
 
-    connect(this->ui->destinationsWidget, &DestinationsWidget::failedToStartQuery,
+    connect(this->ui->destinationsWidget,
+            &DestinationsWidget::failedToStartQuery,
             this, &MainWindow::handleQueryFailedToStart);
     connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
             this, &MainWindow::updateMountPointsView);
@@ -282,14 +214,18 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemCollapsed,
             this, &MainWindow::mountPointItemCollapsed);
 
-    connect(this->timer, &QTimer::timeout,
+    connect(this->destinationsTimer, &QTimer::timeout,
+            this->ui->destinationsWidget,
+            &DestinationsWidget::queryDestinations);
+    connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
-    connect(this->timer, &QTimer::timeout,
-            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+
     QTimer::singleShot(0,
                        this->ui->destinationsWidget,
                        &DestinationsWidget::queryDestinations);
-    this->timer->start(2500);
+    QTimer::singleShot(0, this, &MainWindow::checkTmStatus);
+    this->destinationsTimer->start(SettingsDialog::tmutilDestInterval());
+    this->statusTimer->start(SettingsDialog::tmutilStatInterval());
 }
 
 MainWindow::~MainWindow()
@@ -391,7 +327,7 @@ void MainWindow::addDirEntry(
     using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
 
     auto col = 0;
-    const auto item = new QTreeWidgetItem;
+    auto item = new QTreeWidgetItem;
     item->setTextAlignment(col, Qt::AlignLeft|Qt::AlignVCenter);
     item->setFont(col, this->pathFont);
     item->setText(col, QString::fromStdString(path.filename().string()));
@@ -466,7 +402,7 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
         item->setText(backupsCountCol, "?");
     }
 
-    DirectoryReader *workerThread = new DirectoryReader(item, this);
+    auto *workerThread = new DirectoryReader(item, this);
     connect(workerThread, &DirectoryReader::ended,
             this, &MainWindow::reportDir);
     connect(workerThread, &DirectoryReader::entry,
@@ -476,7 +412,8 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
     workerThread->start();
 }
 
-void MainWindow::mountPointItemCollapsed(QTreeWidgetItem *item)
+void MainWindow::mountPointItemCollapsed( // NOLINT(readability-convert-member-functions-to-static)
+    QTreeWidgetItem *item)
 {
     qDebug() << "got mount point collapsed signal"
              << "for item:" << item->text(0);
@@ -487,12 +424,10 @@ void MainWindow::mountPointItemCollapsed(QTreeWidgetItem *item)
 
 void MainWindow::resizeMountPointsColumns()
 {
-    this->ui->mountPointsWidget->resizeColumnToContents(1);
-    this->ui->mountPointsWidget->resizeColumnToContents(2);
-    this->ui->mountPointsWidget->resizeColumnToContents(3);
-    this->ui->mountPointsWidget->resizeColumnToContents(4);
-    this->ui->mountPointsWidget->resizeColumnToContents(5);
-    this->ui->mountPointsWidget->resizeColumnToContents(6);
+    const auto count = this->ui->mountPointsWidget->columnCount();
+    for (auto col = 0; col < count; ++col) {
+        this->ui->mountPointsWidget->resizeColumnToContents(col);
+    }
 }
 
 void MainWindow::updateMountPointsDir(const QString &path)
@@ -647,9 +582,10 @@ void MainWindow::selectedPathsChanged()
 void MainWindow::showAboutDialog()
 {
     QString text;
-    text.append(QString("%1 %2.%3").arg(this->windowTitle(),
-                                           QString::number(VERSION_MAJOR),
-                                           QString::number(VERSION_MINOR)));
+    text.append(QString("%1 %2.%3")
+                    .arg(this->windowTitle())
+                    .arg(VERSION_MAJOR)
+                    .arg(VERSION_MINOR));
     text.append("\n\n");
     text.append(QString("Copyright %1").arg(COPYRIGHT));
     text.append("\n\n");
@@ -699,7 +635,7 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
 {
     qDebug() << "MainWindow::handleQueryFailedToStart called:"
              << text;
-    disconnect(this->timer, &QTimer::timeout,
+    disconnect(this->destinationsTimer, &QTimer::timeout,
                this->ui->destinationsWidget,
                &DestinationsWidget::queryDestinations);
     constexpr auto queryFailedMsg = "Unable to start destinations query";
@@ -757,25 +693,27 @@ void MainWindow::handleTmutilPathChange(const QString &path)
     qDebug() << "MainWindow::handleTmutilPathChange called:"
              << path;
 
-    disconnect(this->timer, &QTimer::timeout,
+    disconnect(this->statusTimer, &QTimer::timeout,
                this, &MainWindow::checkTmStatus);
-    disconnect(this->timer, &QTimer::timeout,
-               this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+    disconnect(this->destinationsTimer, &QTimer::timeout,
+               this->ui->destinationsWidget,
+               &DestinationsWidget::queryDestinations);
 
     this->tmUtilPath = path;
     this->ui->destinationsWidget->setTmutilPath(path);
 
-    connect(this->timer, &QTimer::timeout,
+    connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
-    connect(this->timer, &QTimer::timeout,
-            this->ui->destinationsWidget, &DestinationsWidget::queryDestinations);
+    connect(this->destinationsTimer, &QTimer::timeout,
+            this->ui->destinationsWidget,
+            &DestinationsWidget::queryDestinations);
 }
 
 void MainWindow::handleTmStatusNoPlist()
 {
     qDebug() << "handleTmStatusNoPlist called";
 
-    disconnect(this->timer, &QTimer::timeout,
+    disconnect(this->statusTimer, &QTimer::timeout,
                this, &MainWindow::checkTmStatus);
     QMessageBox msgBox;
     msgBox.setStandardButtons(QMessageBox::Open);
@@ -794,7 +732,7 @@ void MainWindow::handleTmStatusNoPlist()
 }
 
 void MainWindow::handleTmStatusReaderError(
-    int lineNumber, int error, const QString &text)
+    qint64 lineNumber, int error, const QString &text)
 {
     qDebug() << "handleTmStatusReaderError called:" << text;
     qDebug() << "line #" << lineNumber;

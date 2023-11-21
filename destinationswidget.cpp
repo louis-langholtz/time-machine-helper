@@ -65,7 +65,7 @@ auto toPlistDictVector(const plist_array& array)
     return result;
 }
 
-QString decodeBackupPhase(const plist_string& name)
+auto decodeBackupPhase(const plist_string &name) -> QString
 {
     if (name == "ThinningPostBackup") {
         return "Thinning Post Backup";
@@ -73,9 +73,8 @@ QString decodeBackupPhase(const plist_string& name)
     return QString::fromStdString(name);
 }
 
-QString textForBackupStatus(
-    const plist_dict& status,
-    const std::string& mp)
+auto textForBackupStatus(const plist_dict &status, const std::string &mp)
+    -> QString
 {
     // When running...
     const auto destMP = get<plist_string>(status, destinationMountPointKey);
@@ -95,9 +94,15 @@ QString textForBackupStatus(
     return QString{};
 }
 
-QString toolTipForBackupStatus(
-    const plist_dict& status,
-    const std::string& mp)
+auto secondsToUserTime(plist_real value) -> QString
+{
+    static constexpr auto secondsPerMinutes = 60;
+    return QString("~%1 minutes")
+        .arg(QString::number(value / secondsPerMinutes, 'f', 1));
+}
+
+auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
+    -> QString
 {
     // When running...
     const auto destMP = get<plist_string>(status, destinationMountPointKey);
@@ -120,8 +125,8 @@ QString toolTipForBackupStatus(
                 result << QString("Total files: %1.").arg(*v);
             }
             if (const auto v = get<plist_real>(*prog, timeRemainingKey)) {
-                result << QString("Allegedly, ~%1 minutes remaining.")
-                              .arg(QString::number(*v / 60, 'f', 1));
+                result << QString("Allegedly, %1 remaining.")
+                              .arg(secondsToUserTime(*v));
             }
         }
         return result.join('\n');
@@ -134,13 +139,9 @@ QString toolTipForBackupStatus(
 DestinationsWidget::DestinationsWidget(QWidget *parent)
     : QTableWidget{parent}
 {
-    if (const auto item = this->horizontalHeaderItem(3)) {
-        this->saveBg = item->background();
-        item->setBackground(QBrush(QColor(255, 0, 0, 100)));
-    }
 }
 
-QString DestinationsWidget::tmutilPath() const
+auto DestinationsWidget::tmutilPath() const -> QString
 {
     return this->tmuPath;
 }
@@ -150,8 +151,9 @@ void DestinationsWidget::setTmutilPath(const QString& path)
     this->tmuPath = path;
 }
 
-QTableWidgetItem *DestinationsWidget::createdItem(
-    int row, int column, Qt::Alignment textAlign)
+auto DestinationsWidget::createdItem(int row, int column,
+                                     Qt::Alignment textAlign)
+    -> QTableWidgetItem *
 {
     auto item = this->item(row, column);
     if (!item) {
@@ -207,7 +209,7 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
 }
 
 void DestinationsWidget::handleReaderError(
-    int lineNumber, int error, const QString& text)
+    qint64 lineNumber, int error, const QString& text)
 {
     const auto status =
         QString("'%1 %2 %3' erred reading line %4, code %5: %6.")
@@ -291,9 +293,6 @@ void DestinationsWidget::update(
         }
         const auto mp = get<std::string>(d, "MountPoint");
         {
-            if (const auto item = this->horizontalHeaderItem(3)) {
-                item->setBackground(this->saveBg);
-            }
             const auto textAlign = Qt::AlignLeft|Qt::AlignVCenter;
             const auto item = this->createdItem(row, 3, textAlign);
             item->setText(QString::fromStdString(mp.value_or("")));
@@ -369,7 +368,8 @@ void DestinationsWidget::update(const plist_dict &plist)
     update(*p);
 }
 
-int DestinationsWidget::findRowWithMountPoint(const QString &key) const
+auto DestinationsWidget::findRowWithMountPoint(const QString &key) const
+    -> int
 {
     const auto rows = this->rowCount();
     for (auto r = 0; r < rows; ++r) {
@@ -388,6 +388,6 @@ void DestinationsWidget::updateUI(const plist_object &plist)
     }
     emit wrongQueryInfo(QString(
         "Got wrong plist value type: expected index of %1, got %2!")
-                            .arg(plist_variant(plist_dict{}).index(),
-                                 plist.value.index()));
+                            .arg(plist_variant(plist_dict{}).index())
+                            .arg(plist.value.index()));
 }

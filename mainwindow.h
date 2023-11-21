@@ -24,13 +24,14 @@ class QTimer;
 
 class MainWindow : public QMainWindow
 {
+    // NOLINTBEGIN
     Q_OBJECT
+    // NOLINTEND
 
 public:
     MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    ~MainWindow() override;
 
-public slots:
     void resizeMountPointsColumns();
     void updateMountPointsView(
         const std::vector<std::string>& paths);
@@ -47,29 +48,27 @@ public slots:
     void showSettingsDialog();
     void reportDir(QTreeWidgetItem *item,
                    std::error_code ec);
-    void addDirEntry(QTreeWidgetItem *item,
+    void addDirEntry(QTreeWidgetItem *parent,
                      const QMap<QString, QByteArray>& attrs,
                      const std::filesystem::path& path,
                      const std::filesystem::file_status& status);
     void checkTmStatus();
     void showStatus(const QString& status);
 
-signals:
-
-private slots:
+private:
     void handleQueryFailedToStart(const QString &text);
     void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
     void handleTmStatusNoPlist();
-    void handleTmStatusReaderError(int lineNumber,
+    void handleTmStatusReaderError(qint64 lineNumber,
                                    int error,
                                    const QString& text);
     void handleTmStatusFinished(int code, int status);
 
-private:
     QErrorMessage errorMessage;
     Ui::MainWindow *ui{};
-    QTimer *timer{};
+    QTimer *destinationsTimer{};
+    QTimer *statusTimer{};
     QString tmUtilPath;
     QFileSystemWatcher *fileSystemWatcher{};
     QFont pathFont;

@@ -1,6 +1,7 @@
 #include <unistd.h> // for isatty, setsid
 
 #include <csignal>
+#include <system_error>
 
 #include <QCloseEvent>
 #include <QVBoxLayout>
@@ -18,12 +19,15 @@
 
 namespace {
 
+constexpr auto oneSecondsInMS = 1000;
+constexpr auto twoSecondsInMS = 2000;
+
 constexpr auto openMode =
     QProcess::ReadWrite|QProcess::Text|QProcess::Unbuffered;
 constexpr auto noExplanationMsg =
     "no explanation";
 
-QString toHtmlList(const QStringList& strings)
+auto toHtmlList(const QStringList &strings) -> QString
 {
     QString result;
     result.append("<pre>");
@@ -130,7 +134,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
                 frameLayout->addWidget(this->statusBar);
                 return frameLayout;
             }());
-            frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+            frame->setSizePolicy(QSizePolicy::Preferred,
+                                 QSizePolicy::Minimum);
             this->splitter->addWidget(frame);
         }
         mainLayout->addWidget(this->splitter);
@@ -167,60 +172,60 @@ void PathActionDialog::reject()
     this->close();
 }
 
-QString PathActionDialog::errorString(
-    const QString& fallback) const
+auto PathActionDialog::errorString(const QString &fallback) const
+    -> QString
 {
     return this->process
                ? this->process->errorString()
                : fallback;
 }
 
-QString PathActionDialog::text() const
+auto PathActionDialog::text() const -> QString
 {
     return this->textLabel->text();
 }
 
-QStringList PathActionDialog::paths() const
+auto PathActionDialog::paths() const -> QStringList
 {
     return this->pathList;
 }
 
-QStringList PathActionDialog::firstArgs() const
+auto PathActionDialog::firstArgs() const -> QStringList
 {
     return this->beginList;
 }
 
-QStringList PathActionDialog::lastArgs() const
+auto PathActionDialog::lastArgs() const -> QStringList
 {
     return this->endList;
 }
 
-QString PathActionDialog::action() const
+auto PathActionDialog::action() const -> QString
 {
     return this->verb;
 }
 
-bool PathActionDialog::asRoot() const noexcept
+auto PathActionDialog::asRoot() const noexcept -> bool
 {
     return this->withAdmin;
 }
 
-QProcessEnvironment PathActionDialog::environment() const
+auto PathActionDialog::environment() const -> QProcessEnvironment
 {
     return this->env;
 }
 
-QString PathActionDialog::tmutilPath() const
+auto PathActionDialog::tmutilPath() const -> QString
 {
     return this->tmuPath;
 }
 
-QString PathActionDialog::pathPrefix() const
+auto PathActionDialog::pathPrefix() const -> QString
 {
     return this->pathPre;
 }
 
-int PathActionDialog::stopSignal() const noexcept
+auto PathActionDialog::stopSignal() const noexcept -> int
 {
     return this->stopSig;
 }
@@ -246,8 +251,7 @@ void PathActionDialog::setPaths(const QStringList &paths)
     const auto fm = QFontMetrics(this->pathsWidget->currentFont());
     const auto margins = this->pathsWidget->contentsMargins();
     const auto h = (doc->size().toSize().height()) +
-                   ((doc->documentMargin() +
-                   this->pathsWidget->frameWidth()) * 2) +
+                   (this->pathsWidget->frameWidth() * 2) +
                    margins.top() + margins.bottom() +
                    (sb? sb->height(): 0);
     qDebug() << "setPaths setting max h:" << h;
@@ -360,14 +364,16 @@ void PathActionDialog::stopAction()
         qDebug() << "stopAction kill with:"
                  << this->stopSig
                  << this->verb;
-        const auto res = ::kill(this->process->processId(),
-                                this->stopSig);
+        const auto res =
+            ::kill(static_cast<pid_t>(this->process->processId()),
+                   this->stopSig);
         if (res == -1) {
-            qWarning() << "kill failed:" << strerror(errno);
+            qWarning() << "kill failed:"
+                       << std::generic_category().message(errno);
         }
-        QTimer::singleShot(1000, this->process,
+        QTimer::singleShot(oneSecondsInMS, this->process,
                            &QProcess::terminate);
-        QTimer::singleShot(2000, this->process, &QProcess::kill);
+        QTimer::singleShot(twoSecondsInMS, this->process, &QProcess::kill);
     }
 }
 

@@ -14,7 +14,10 @@ class QTreeWidgetItem;
 
 class DirectoryReader: public QThread
 {
+    // NOLINTBEGIN
     Q_OBJECT
+    // NOLINTEND
+
 public:
     DirectoryReader(QTreeWidgetItem *i,
                     QObject *parent = nullptr);
