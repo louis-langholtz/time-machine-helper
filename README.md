@@ -23,3 +23,31 @@ man 8 sudo
 
 As of November 8, 2023, GitHub doesn't appear to have a runner available for macos-14 yet.
 So, this project's continuous integration setup is disabled for now and shows up as failed.
+
+## Configure
+
+If Qt is not in a standard, system installed location, specify where to find Qt with the following setting in front of the usual cmake configuration arguments, for example:
+
+```sh
+CMAKE_PREFIX_PATH=./Qt/6.6.0/macos/lib/cmake
+```
+
+The usual cmake configuration arguments, are:
+
+```sh
+cmake -S time-machine-helper -B time-machine-helper-build
+```
+
+## Build
+
+```sh
+cmake --build time-machine-helper-build --config Release
+```
+
+## Code Check
+
+Optionally, if you want to check the code with its clang-tidy configuration:
+
+```
+run-clang-tidy -p time-machine-helper-build time-machine-helper
+```
