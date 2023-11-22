@@ -280,6 +280,7 @@ void DestinationsWidget::update(
             const auto item = this->createdItem(row, 0);
             const auto v = get<std::string>(d, "Name");
             item->setText(QString::fromStdString(v.value_or("")));
+            item->setToolTip("Backup disk a.k.a. backup destination.");
         }
         {
             const auto item = this->createdItem(row, 1);

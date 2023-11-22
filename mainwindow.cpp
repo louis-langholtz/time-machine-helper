@@ -92,6 +92,11 @@ auto get(const QMap<QString, QByteArray> &attrs, const QString &key)
 
 auto pathTooltip(const QMap<QString, QByteArray> &attrs) -> QString
 {
+    if (const auto v = get(attrs, timeMachineMetaAttr)) {
+        if (v->startsWith("SnapshotStorage")) {
+            return "A \"backup store\".";
+        }
+    }
     if (const auto v = get(attrs, machineUuidAttr)) {
         return "This is a \"machine directory\".";
     }
@@ -254,6 +259,7 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
             const auto item = new QTreeWidgetItem(QTreeWidgetItem::UserType);
             item->setChildIndicatorPolicy(policy);
             item->setText(0, path);
+            item->setToolTip(0, "A \"backup destination\".");
             item->setData(0, Qt::ItemDataRole::UserRole, path);
             item->setFont(0, pathFont);
             item->setWhatsThis(0, QString("This is the file system info for '%1'")
