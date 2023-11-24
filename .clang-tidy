@@ -17,7 +17,7 @@ Checks: 'bugprone-*,
   readability-*,
   -bugprone-implicit-widening-of-multiplication-result,-bugprone-branch-clone,-bugprone-easily-swappable-parameters,
   -cppcoreguidelines-avoid-c-arrays,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-macro-usage,-cppcoreguidelines-pro-type-union-access,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-owning-memory,
-  -misc-non-private-member-variables-in-classes,-misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,-misc-no-recursion,-misc-include-cleaner,
   -readability-uppercase-literal-suffix,-readability-identifier-length,-readability-named-parameter,-readability-implicit-bool-conversion,-readability-qualified-auto'
 WarningsAsErrors: ''
 HeaderFilterRegex: ''
