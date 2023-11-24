@@ -1,5 +1,4 @@
 #include <algorithm> // std::find_if_not
-#include <coroutine>
 #include <optional>
 #include <utility>
 #include <set>
@@ -28,6 +27,7 @@
 #include "mainwindow.h"
 #include "pathactiondialog.h"
 #include "plistprocess.h"
+#include "settings.h"
 #include "settingsdialog.h"
 
 namespace {
@@ -179,7 +179,7 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->mountPointsWidget->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
 
-    this->tmUtilPath = SettingsDialog::tmutilPath();
+    this->tmUtilPath = Settings::tmutilPath();
 
     this->ui->destinationsWidget->setTmutilPath(this->tmUtilPath);
     this->ui->destinationsWidget->horizontalHeader()
@@ -225,12 +225,11 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
 
+    QTimer::singleShot(0, this, &MainWindow::readSettings);
     QTimer::singleShot(0,
                        this->ui->destinationsWidget,
                        &DestinationsWidget::queryDestinations);
     QTimer::singleShot(0, this, &MainWindow::checkTmStatus);
-    this->destinationsTimer->start(SettingsDialog::tmutilDestInterval());
-    this->statusTimer->start(SettingsDialog::tmutilStatInterval());
 }
 
 MainWindow::~MainWindow()
@@ -767,3 +766,22 @@ void MainWindow::handleTmStatusFinished(int code, int status)
     }
 }
 
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    qDebug() << "saving mainwindow geometry & state";
+    Settings::setMainWindowGeometry(saveGeometry());
+    Settings::setMainWindowState(saveState());
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::readSettings()
+{
+    if (!this->restoreGeometry(Settings::mainWindowGeometry())) {
+        qDebug() << "unable to restore previous geometry";
+    }
+    if (!this->restoreState(Settings::mainWindowState())) {
+        qDebug() << "unable to restore previous state";
+    }
+    this->destinationsTimer->start(Settings::tmutilDestInterval());
+    this->statusTimer->start(Settings::tmutilStatInterval());
+}

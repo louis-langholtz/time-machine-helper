@@ -1,4 +1,3 @@
-#include <QSettings>
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
@@ -11,21 +10,16 @@
 #include <QCloseEvent>
 #include <QSpinBox>
 
+#include "settings.h"
 #include "settingsdialog.h"
 
-namespace {
+using namespace Settings;
 
-constexpr auto tmutilPathKey = "tmutilPath";
-constexpr auto tmutilStatTimeKey = "tmutilStatusInterval";
-constexpr auto tmutilDestTimeKey = "tmutilDestinationsInterval";
+namespace {
 
 constexpr auto minimumTimeMsecs = 250;
 constexpr auto maximumTimeMsecs = 60000;
 constexpr auto timeStepMsecs = 250;
-
-constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
-constexpr auto defaultTmutilStatTime = 1000;
-constexpr auto defaultTmutilDestTime = 2500;
 
 constexpr auto badValueStyle = "background-color: rgb(255, 170, 170);";
 constexpr auto goodValueStyle = "background-color: rgb(170, 255, 170);";
@@ -35,12 +29,6 @@ constexpr auto filters = QDir::Executable|
                          QDir::CaseSensitive|
                          QDir::Hidden|
                          QDir::NoDotAndDotDot;
-
-auto settings() -> QSettings &
-{
-    static QSettings the;
-    return the;
-}
 
 }
 
@@ -95,24 +83,6 @@ auto ExecutableValidator::validate(QString &input, int &pos) const
         pre.chop(1);
     }
     return QValidator::Invalid;
-}
-
-auto SettingsDialog::tmutilPath() -> QString
-{
-    return settings().value(tmutilPathKey,
-                            QString(defaultTmutilPath)).toString();
-}
-
-auto SettingsDialog::tmutilStatInterval() -> int
-{
-    return settings().value(tmutilStatTimeKey,
-                            defaultTmutilStatTime).toInt();
-}
-
-auto SettingsDialog::tmutilDestInterval() -> int
-{
-    return settings().value(tmutilDestTimeKey,
-                            defaultTmutilDestTime).toInt();
 }
 
 SettingsDialog::SettingsDialog(QWidget *parent):
@@ -324,7 +294,7 @@ void SettingsDialog::save()
         const auto newValue = this->tmutilPathEdit->text();
         this->tmutilPathEdit->setStyleSheet(this->origPathStyle);
         if (oldValue != newValue) {
-            settings().setValue(tmutilPathKey, newValue);
+            setTmutilPath(newValue);
             emit tmutilPathChanged(newValue);
         }
     }
@@ -333,7 +303,7 @@ void SettingsDialog::save()
         const auto newValue = this->tmutilStatTimeEdit->value();
         this->tmutilStatTimeEdit->setStyleSheet(this->origStatTimeStyle);
         if (oldValue != newValue) {
-            settings().setValue(tmutilStatTimeKey, newValue);
+            setTmutilStatInterval(newValue);
             emit tmutilStatusIntervalChanged(newValue);
         }
     }
@@ -342,7 +312,7 @@ void SettingsDialog::save()
         const auto newValue = this->tmutilDestTimeEdit->value();
         this->tmutilDestTimeEdit->setStyleSheet(this->origDestTimeStyle);
         if (oldValue != newValue) {
-            settings().setValue(tmutilDestTimeKey, newValue);
+            setTmutilDestInterval(newValue);
             emit tmutilDestinationsIntervalChanged(newValue);
         }
     }

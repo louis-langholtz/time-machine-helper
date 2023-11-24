@@ -17,9 +17,6 @@ class SettingsDialog : public QDialog
     // NOLINTEND
 
 public:
-    static auto tmutilPath() -> QString;
-    static auto tmutilStatInterval() -> int;
-    static auto tmutilDestInterval() -> int;
 
     explicit SettingsDialog(QWidget *parent = nullptr);
 

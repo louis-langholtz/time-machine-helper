@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include <filesystem>
-#include <map>
 #include <vector>
 
 #include <QFont>
@@ -32,6 +31,9 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    void closeEvent(QCloseEvent *event) override;
+
+    void readSettings();
     void resizeMountPointsColumns();
     void updateMountPointsView(
         const std::vector<std::string>& paths);
