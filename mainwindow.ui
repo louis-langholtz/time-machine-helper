@@ -72,6 +72,14 @@
         </column>
         <column>
          <property name="text">
+          <string>% Usage</string>
+         </property>
+         <property name="toolTip">
+          <string>Percent usage of the mounted destination.</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
           <string>Capacity</string>
          </property>
          <property name="toolTip">

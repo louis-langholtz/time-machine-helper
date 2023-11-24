@@ -6,6 +6,7 @@
 #include <QXmlStreamReader>
 #include <QMainWindow>
 #include <QFileInfo>
+#include <QProgressBar>
 
 #include "destinationswidget.h"
 #include "plist_object.h"
@@ -69,6 +70,9 @@ auto decodeBackupPhase(const plist_string &name) -> QString
 {
     if (name == "ThinningPostBackup") {
         return "Thinning Post Backup";
+    }
+    if (name == "FindingChanges") {
+        return "Finding Changes";
     }
     return QString::fromStdString(name);
 }
@@ -198,7 +202,7 @@ void DestinationsWidget::handleStatus(const plist_object &plist)
         if (!mpItem) {
             continue;
         }
-        const auto stItem = this->item(row, 6);
+        const auto stItem = this->item(row, 7);
         if (!stItem) {
             continue;
         }
@@ -283,9 +287,10 @@ void DestinationsWidget::update(
             item->setToolTip("Backup disk a.k.a. backup destination.");
         }
         {
-            const auto item = this->createdItem(row, 1);
+            const auto item = this->createdItem(row, 1, Qt::AlignVCenter);
             const auto v = get<std::string>(d, "ID");
             item->setText(QString::fromStdString(v.value_or("")));
+            item->setFont(font);
         }
         {
             const auto item = this->createdItem(row, 2);
@@ -304,8 +309,26 @@ void DestinationsWidget::update(
                             ? std::filesystem::space(*mp, ec)
                             : std::filesystem::space_info{};
         {
+            const auto used = si.capacity - si.free;
+            const auto percentUsage =
+                static_cast<int>((double(used) / double(si.capacity)) * 100.0);
+            auto widget = new QProgressBar{this};
+            widget->setOrientation(Qt::Horizontal);
+            constexpr auto percentMin = 0;
+            constexpr auto percentMax = 100;
+            widget->setRange(percentMin, percentMax);
+            widget->setValue(percentUsage);
+            widget->setTextVisible(true);
+            widget->setToolTip(QString("Used %1% (%2b of %3b with %4b remaining).")
+                                   .arg(percentUsage)
+                                   .arg(used)
+                                   .arg(si.capacity)
+                                   .arg(si.free));
+            this->setCellWidget(row, 4, widget);
+        }
+        {
             const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
-            const auto item = this->createdItem(row, 4, textAlign);
+            const auto item = this->createdItem(row, 5, textAlign);
             const auto text = (mp && !ec)
                 ? QString::number(double(si.capacity) / gigabyte, 'f', 2)
                 : QString{};
@@ -313,7 +336,7 @@ void DestinationsWidget::update(
         }
         {
             const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
-            const auto item = this->createdItem(row, 5, textAlign);
+            const auto item = this->createdItem(row, 6, textAlign);
             const auto text = (mp && !ec)
                 ? QString::number(double(si.free) / gigabyte, 'f', 2)
                 : QString{};
@@ -322,7 +345,7 @@ void DestinationsWidget::update(
         {
             const auto status = this->lastStatus;
             const auto mountPoint = mp.value_or("");
-            const auto item = this->createdItem(row, 6);
+            const auto item = this->createdItem(row, 7);
             item->setText(textForBackupStatus(status, mountPoint));
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }

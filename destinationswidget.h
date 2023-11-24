@@ -36,7 +36,8 @@ signals:
 private:
     // Private slots...
     void updateUI(const plist_object &plist);
-    void handleReaderError(qint64 lineNumber, int error, const QString& text);
+    void handleReaderError(qint64 lineNumber, int error,
+                           const QString& text);
     void handleErrorOccurred(int error, const QString& text);
     void handleQueryFinished(int code, int status);
 
@@ -47,7 +48,8 @@ private:
     void update(const std::vector<plist_dict>& destinations);
     void update(const plist_array &plist);
     void update(const plist_dict &plist);
-    [[nodiscard]] auto findRowWithMountPoint(const QString &key) const -> int;
+    [[nodiscard]] auto findRowWithMountPoint(const QString &key) const
+        -> int;
 
     QString tmuPath{"tmutil"};
     plist_dict lastStatus;
