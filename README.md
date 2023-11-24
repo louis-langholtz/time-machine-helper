@@ -3,6 +3,16 @@
 A Qt based GUI application for helping with macOS Time Machine.
 This is a macOS specific application.
 
+## Features
+
+- [x] Destination monitoring.
+- [x] Backup status monitoring showing backup phase, percentage completion, and more.
+- [x] Inspection of mount point paths, their _backup stores_, _machine directories_, _backups_, _volume stores_, and their directories and files, showing snapshot types, copied sizes, file system types, and volume used data sizes.
+- [x] Deletion of "backups".
+- [x] "uniquely sizing" paths.
+- [x] Verifying paths.
+- [x] Restoring from paths.
+
 ## Prerequisites
 
 This project minimally needs the following:
