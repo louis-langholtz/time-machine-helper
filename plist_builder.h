@@ -11,16 +11,16 @@ struct invalid_plist_variant_type: std::invalid_argument {
 };
 
 /// @brief Builder of plist_object objects.
-auto plist_builder(await_handle<plist_variant> *awaiting_handle)
+auto plist_builder(await_handle<plist_variant> *awaitable)
     -> coroutine_task<plist_object>;
 
 /// @brief Builder of plist_array objects.
-auto plist_array_builder(await_handle<plist_variant> *awaiting_handle)
+auto plist_array_builder(await_handle<plist_variant> *awaitable)
     -> coroutine_task<plist_array>;
 
 /// @brief Builder of plist_dict objects.
 /// @throws invalid_plist_variant_type if key element not plist_string.
-auto plist_dict_builder(await_handle<plist_variant> *awaiting_handle)
+auto plist_dict_builder(await_handle<plist_variant> *awaitable)
     -> coroutine_task<plist_dict>;
 
 #endif // PLIST_BUILDER_H
