@@ -84,7 +84,7 @@ private:
     std::optional<plist_object> data;
     QProcess *process{};
     QXmlStreamReader *reader{};
-    await_handle<plist_variant> awaiting_handle;
+    await_handle<plist_variant> awaitable;
     coroutine_task<plist_object> task;
     QString currentText;
 };

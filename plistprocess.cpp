@@ -139,10 +139,10 @@ void PlistProcess::readMore()
             case plist_element_type::none:
                 break;
             case plist_element_type::array:
-                this->awaiting_handle.set_value(plist_array{});
+                this->awaitable.set_value(plist_array{});
                 break;
             case plist_element_type::dict:
-                this->awaiting_handle.set_value(plist_dict{});
+                this->awaitable.set_value(plist_dict{});
                 break;
             case plist_element_type::data:
             case plist_element_type::date:
@@ -154,7 +154,7 @@ void PlistProcess::readMore()
             case plist_element_type::key:
                 break;
             case plist_element_type::plist:
-                this->task = plist_builder(&awaiting_handle);
+                this->task = plist_builder(&awaitable);
                 break;
             }
             break;
@@ -168,33 +168,33 @@ void PlistProcess::readMore()
                 break;
             case plist_element_type::array:
             case plist_element_type::dict:
-                this->awaiting_handle.set_value(plist_variant{});
+                this->awaitable.set_value(plist_variant{});
                 break;
             case plist_element_type::data:
-                this->awaiting_handle
+                this->awaitable
                     .set_value(toPlistData(currentText));
                 break;
             case plist_element_type::date:
-                this->awaiting_handle
+                this->awaitable
                     .set_value(toPlistDate(currentText));
                 break;
             case plist_element_type::so_true:
-                this->awaiting_handle.set_value(plist_true{});
+                this->awaitable.set_value(plist_true{});
                 break;
             case plist_element_type::so_false:
-                this->awaiting_handle.set_value(plist_false{});
+                this->awaitable.set_value(plist_false{});
                 break;
             case plist_element_type::real:
-                this->awaiting_handle
+                this->awaitable
                     .set_value(plist_real{currentText.toDouble()});
                 break;
             case plist_element_type::integer:
-                this->awaiting_handle
+                this->awaitable
                     .set_value(plist_integer{currentText.toLongLong()});
                 break;
             case plist_element_type::string:
             case plist_element_type::key:
-                this->awaiting_handle
+                this->awaitable
                     .set_value(plist_string{currentText.toStdString()});
                 break;
             case plist_element_type::plist:
