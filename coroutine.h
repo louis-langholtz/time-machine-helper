@@ -82,9 +82,7 @@ struct await_handle {
     auto await_resume() -> AwaitType
     {
         assert(this->value_to_await.has_value());
-        auto tmp = *this->value_to_await;
-        this->value_to_await.reset();
-        return tmp;
+        return *std::exchange(this->value_to_await, {});
     }
 
     auto set_value(AwaitType value) -> void
