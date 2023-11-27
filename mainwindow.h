@@ -61,6 +61,7 @@ private:
     void handleQueryFailedToStart(const QString &text);
     void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
+    void handleSudoPathChange(const QString &path);
     void handleTmStatusNoPlist();
     void handleTmStatusReaderError(qint64 lineNumber,
                                    int error,
@@ -71,7 +72,8 @@ private:
     Ui::MainWindow *ui{};
     QTimer *destinationsTimer{};
     QTimer *statusTimer{};
-    QString tmUtilPath;
+    QString tmutilPath;
+    QString sudoPath;
     QFileSystemWatcher *fileSystemWatcher{};
     QFont pathFont;
 };

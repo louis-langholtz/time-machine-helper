@@ -1,10 +1,8 @@
 #include <algorithm> // std::find_if_not
 #include <optional>
-#include <utility>
 #include <set>
 #include <string>
 #include <vector>
-#include <iterator>
 
 #include <QtDebug>
 #include <QObject>
@@ -179,9 +177,10 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->mountPointsWidget->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
 
-    this->tmUtilPath = Settings::tmutilPath();
+    this->tmutilPath = Settings::tmutilPath();
+    this->sudoPath = Settings::sudoPath();
 
-    this->ui->destinationsWidget->setTmutilPath(this->tmUtilPath);
+    this->ui->destinationsWidget->setTmutilPath(this->tmutilPath);
     this->ui->destinationsWidget->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
 
@@ -462,7 +461,8 @@ void MainWindow::deleteSelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
-    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setTmutilPath(this->tmutilPath);
+    dialog->setSudoPath(this->sudoPath);
     dialog->setPathPrefix("-p");
     dialog->setWindowTitle("Deletion Dialog");
     dialog->setText("Are you sure that you want to delete the following paths?");
@@ -493,13 +493,12 @@ void MainWindow::uniqueSizeSelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
-    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Unique Size Dialog");
     dialog->setText(
         "Are you sure that you want to uniquely size the following paths?");
     dialog->setPaths(selectedPaths);
     dialog->setAction(tmutilUniqueSizeVerb);
-    //dialog->setAsRoot(true);
     dialog->show();
 }
 
@@ -535,7 +534,7 @@ void MainWindow::restoreSelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
-    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Restore Dialog");
     dialog->setText(QString(
         "Are you sure that you want to restore the following paths to '%2'?")
@@ -560,13 +559,12 @@ void MainWindow::verifySelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
-    dialog->setTmutilPath(this->tmUtilPath);
+    dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Verify Dialog");
     dialog->setText(
         "Are you sure that you want to verify the following paths?");
     dialog->setPaths(selectedPaths);
     dialog->setAction(tmutilVerifyVerb);
-    //dialog->setAsRoot(true);
     dialog->show();
 }
 
@@ -604,10 +602,12 @@ void MainWindow::showAboutDialog()
 
 void MainWindow::showSettingsDialog()
 {
-    qDebug() << "showPreferencesDialog called";
+    qDebug() << "showSettingsDialog called";
     const auto dialog = new SettingsDialog{this};
     connect(dialog, &SettingsDialog::tmutilPathChanged,
             this, &MainWindow::handleTmutilPathChange);
+    connect(dialog, &SettingsDialog::sudoPathChanged,
+            this, &MainWindow::handleSudoPathChange);
     connect(dialog, &SettingsDialog::finished,
             dialog, &SettingsDialog::deleteLater);
     dialog->exec();
@@ -627,7 +627,7 @@ void MainWindow::checkTmStatus()
             this, &MainWindow::handleTmStatusFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
-    process->start(this->tmUtilPath,
+    process->start(this->tmutilPath,
                    QStringList() << tmutilStatusVerb << "-X");
 }
 
@@ -704,7 +704,7 @@ void MainWindow::handleTmutilPathChange(const QString &path)
                this->ui->destinationsWidget,
                &DestinationsWidget::queryDestinations);
 
-    this->tmUtilPath = path;
+    this->tmutilPath = path;
     this->ui->destinationsWidget->setTmutilPath(path);
 
     connect(this->statusTimer, &QTimer::timeout,
@@ -712,6 +712,13 @@ void MainWindow::handleTmutilPathChange(const QString &path)
     connect(this->destinationsTimer, &QTimer::timeout,
             this->ui->destinationsWidget,
             &DestinationsWidget::queryDestinations);
+}
+
+void MainWindow::handleSudoPathChange(const QString &path)
+{
+    qDebug() << "MainWindow::handleSudoPathChange called:"
+             << path;
+    this->sudoPath = path;
 }
 
 void MainWindow::handleTmStatusNoPlist()
