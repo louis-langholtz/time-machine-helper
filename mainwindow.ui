@@ -72,7 +72,7 @@
         </column>
         <column>
          <property name="text">
-          <string>% Usage</string>
+          <string>Usage</string>
          </property>
          <property name="toolTip">
           <string>Percent usage of the mounted destination.</string>
@@ -190,7 +190,7 @@
         </column>
         <column>
          <property name="text">
-          <string>F.S. Type</string>
+          <string>Filesystem Type</string>
          </property>
          <property name="toolTip">
           <string>File system type name.</string>
