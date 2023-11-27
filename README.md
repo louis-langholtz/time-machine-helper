@@ -1,3 +1,5 @@
+![Time Machine Helper Logo](project-image.jpg)
+
 # Time Machine Helper
 
 A Qt based GUI application for helping with macOS Time Machine.
@@ -61,3 +63,7 @@ Optionally, if you want to check the code with its clang-tidy configuration:
 ```
 run-clang-tidy -p time-machine-helper-build time-machine-helper
 ```
+
+## Imagery Credits
+
+Time machine background by [Amy](https://pixabay.com/users/prettysleepy1-2855492/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3160715) from [Pixabay](https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=3160715). Gnome foreground by [M. Harris](https://pixabay.com/users/wonderwoman627-1737396/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=8337253) from [Pixabay](https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=8337253). Composition by Louis Langholtz.
