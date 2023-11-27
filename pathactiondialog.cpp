@@ -220,6 +220,11 @@ auto PathActionDialog::tmutilPath() const -> QString
     return this->tmuPath;
 }
 
+auto PathActionDialog::sudoPath() const -> QString
+{
+    return this->suPath;
+}
+
 auto PathActionDialog::pathPrefix() const -> QString
 {
     return this->pathPre;
@@ -244,11 +249,11 @@ void PathActionDialog::setPaths(const QStringList &paths)
 {
     this->pathList = paths;
     this->pathsWidget->setHtml(toHtmlList(paths));
-#if 1
+
     // todo: get this to work!
     const auto* doc = this->pathsWidget->document();
     const auto* sb = this->pathsWidget->horizontalScrollBar();
-    const auto fm = QFontMetrics(this->pathsWidget->currentFont());
+    //const auto fm = QFontMetrics(this->pathsWidget->currentFont());
     const auto margins = this->pathsWidget->contentsMargins();
     const auto h = (doc->size().toSize().height()) +
                    (this->pathsWidget->frameWidth() * 2) +
@@ -257,7 +262,6 @@ void PathActionDialog::setPaths(const QStringList &paths)
     qDebug() << "setPaths setting max h:" << h;
     this->pathsWidget->setMaximumHeight(h);
     this->pathsWidget->viewport()->setMaximumHeight(h);
-#endif
 }
 
 void PathActionDialog::setLastArgs(const QStringList &args)
@@ -298,6 +302,11 @@ void PathActionDialog::setTmutilPath(const QString &path)
     this->tmuPath = path;
 }
 
+void PathActionDialog::setSudoPath(const QString &path)
+{
+    this->suPath = path;
+}
+
 void PathActionDialog::setPathPrefix(const QString &prefix)
 {
     this->pathPre = prefix;
@@ -315,7 +324,7 @@ void PathActionDialog::startAction()
     this->outputWidget->setEnabled(true);
 
     const auto program = QString((this->withAdmin)
-        ? QString(this->sudoPath): this->tmuPath);
+        ? QString(this->suPath): this->tmuPath);
 
     auto argList = QStringList();
     if (this->withAdmin) {

@@ -35,6 +35,7 @@ public:
     [[nodiscard]] auto asRoot() const noexcept -> bool;
     [[nodiscard]] auto environment() const -> QProcessEnvironment;
     [[nodiscard]] auto tmutilPath() const -> QString;
+    [[nodiscard]] auto sudoPath() const -> QString;
     [[nodiscard]] auto pathPrefix() const -> QString;
     [[nodiscard]] auto stopSignal() const noexcept -> int;
 
@@ -47,6 +48,7 @@ public:
     void setEnvironment(
         const QProcessEnvironment& environment);
     void setTmutilPath(const QString& path);
+    void setSudoPath(const QString& path);
     void setPathPrefix(const QString& prefix);
     void setStopSignal(int sig);
 
@@ -75,7 +77,7 @@ private:
     QStringList endList;
     QString tmuPath{"tmutil"};
     QString pathPre{};
-    QString sudoPath{"sudo"};
+    QString suPath{"sudo"};
     QString verb;
     int stopSig{};
     bool withAdmin{};
