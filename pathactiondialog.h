@@ -11,6 +11,9 @@ class QPushButton;
 class QProcess;
 class QStatusBar;
 class QSplitter;
+class QLineEdit;
+class QLayout;
+class QVBoxLayout;
 
 class PathActionDialog : public QDialog
 {
@@ -56,18 +59,27 @@ public:
     void stopAction();
     void readProcessOutput();
     void readProcessError();
+    void promptForPassword();
+    void writePasswordToProcess();
     void setProcessStarted();
     void setProcessFinished(int code, int status);
     void setErrorOccurred(int error);
 
+signals:
+    void passwordRequested();
+
 private:
     QSplitter* splitter{};
     QLabel* textLabel{};
+    QLabel* pwdPromptLabel{};
     QTextEdit* pathsWidget{};
     QPushButton* yesButton{};
     QPushButton* noButton{};
     QPushButton* stopButton{};
     QPushButton* dismissButton{};
+    QLineEdit* pwdLineEdit{};
+    QLayout *pwdLayout{};
+    QVBoxLayout *processIoLayout{};
     QTextEdit* outputWidget{};
     QStatusBar* statusBar{};
     QProcess* process{};
