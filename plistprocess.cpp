@@ -171,12 +171,10 @@ void PlistProcess::readMore()
                 this->awaitable.set_value(plist_variant{});
                 break;
             case plist_element_type::data:
-                this->awaitable
-                    .set_value(toPlistData(currentText));
+                this->awaitable.set_value(toPlistData(currentText));
                 break;
             case plist_element_type::date:
-                this->awaitable
-                    .set_value(toPlistDate(currentText));
+                this->awaitable.set_value(toPlistDate(currentText));
                 break;
             case plist_element_type::so_true:
                 this->awaitable.set_value(plist_true{});
@@ -185,17 +183,14 @@ void PlistProcess::readMore()
                 this->awaitable.set_value(plist_false{});
                 break;
             case plist_element_type::real:
-                this->awaitable
-                    .set_value(plist_real{currentText.toDouble()});
+                this->awaitable.set_value(plist_real{currentText.toDouble()});
                 break;
             case plist_element_type::integer:
-                this->awaitable
-                    .set_value(plist_integer{currentText.toLongLong()});
+                this->awaitable.set_value(plist_integer{currentText.toLongLong()});
                 break;
             case plist_element_type::string:
             case plist_element_type::key:
-                this->awaitable
-                    .set_value(plist_string{currentText.toStdString()});
+                this->awaitable.set_value(plist_string{currentText.toStdString()});
                 break;
             case plist_element_type::plist:
             {
