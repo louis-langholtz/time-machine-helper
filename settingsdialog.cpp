@@ -69,11 +69,9 @@ auto ExecutableValidator::validate(QString &input, int &pos) const
     while (true) {
         const auto dir = QDir(base);
         const auto nameFilter = QString("%1*").arg(pre);
-        qDebug() << "nameFilter:" << nameFilter;
         const auto choices = dir.entryList(QStringList{nameFilter},
                                            filters);
         if (!choices.empty()) {
-            qDebug() << "choices:" << choices;
             return QValidator::Intermediate;
         }
         return QValidator::Invalid;
@@ -96,18 +94,22 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     tmutilStatTimeEdit{new QSpinBox{this}},
     tmutilDestTimeLbl{new QLabel{this}},
     tmutilDestTimeEdit{new QSpinBox{this}},
-    tmutilPathValidator{new ExecutableValidator{this}}
+    sudoPathLbl{new QLabel{this}},
+    sudoPathEdit{new QLineEdit{this}},
+    sudoPathBtn{new QPushButton{this}},
+    exePathValidator{new ExecutableValidator{this}}
 {
+    this->setAttribute(Qt::WA_DeleteOnClose);
+    this->setWindowTitle(tr("Preferences"));
+
     this->saveButton->setObjectName("saveButton");
     this->saveButton->setText(tr("Save"));
     this->closeButton->setObjectName("closeButton");
     this->closeButton->setText(tr("Close"));
-    this->origPathStyle = this->tmutilPathEdit->styleSheet();
-    this->setAttribute(Qt::WA_DeleteOnClose);
-    this->setWindowTitle(tr("Preferences"));
+
+    this->tmutilPathStyle = this->tmutilPathEdit->styleSheet();
     this->tmutilPathLbl->setText(tr("Time Machine utility"));
-    this->tmutilPathEdit->setValidator(
-        this->tmutilPathValidator);
+    this->tmutilPathEdit->setValidator(this->exePathValidator);
     this->tmutilPathBtn->setText(tr("Choose..."));
     this->tmutilPathBtn->setDefault(false);
     this->tmutilPathBtn->setAutoDefault(false);
@@ -126,6 +128,13 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     this->tmutilDestTimeEdit->setAlignment(Qt::AlignRight);
     this->origDestTimeStyle = this->tmutilDestTimeEdit->styleSheet();
 
+    this->sudoPathStyle = this->sudoPathEdit->styleSheet();
+    this->sudoPathLbl->setText(tr("Sudo utility"));
+    this->sudoPathEdit->setValidator(this->exePathValidator);
+    this->sudoPathBtn->setText(tr("Choose..."));
+    this->sudoPathBtn->setDefault(false);
+    this->sudoPathBtn->setAutoDefault(false);
+
     this->setLayout([this]() {
         auto *mainLayout = new QVBoxLayout;
         mainLayout->addLayout([this]() {
@@ -138,6 +147,9 @@ SettingsDialog::SettingsDialog(QWidget *parent):
             layout->addWidget(this->tmutilStatTimeEdit, 1, 1);
             layout->addWidget(this->tmutilDestTimeLbl, 2, 0);
             layout->addWidget(this->tmutilDestTimeEdit, 2, 1);
+            layout->addWidget(this->sudoPathLbl, 3, 0);
+            layout->addWidget(this->sudoPathEdit, 3, 1);
+            layout->addWidget(this->sudoPathBtn, 3, 2);
             return layout;
         }());
         mainLayout->addLayout([this]() {
@@ -162,6 +174,13 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     connect(this->tmutilPathBtn, &QPushButton::clicked,
             this, &SettingsDialog::openTmutilPathDialog);
 
+    connect(this->sudoPathEdit, &QLineEdit::editingFinished,
+            this, &SettingsDialog::handleSudoPathFinished);
+    connect(this->sudoPathEdit, &QLineEdit::textChanged,
+            this, &SettingsDialog::handleSudoPathChanged);
+    connect(this->sudoPathBtn, &QPushButton::clicked,
+            this, &SettingsDialog::openSudoPathDialog);
+
     connect(this->tmutilStatTimeEdit, &QSpinBox::valueChanged,
             this, &SettingsDialog::handleStatTimeChanged);
     connect(this->tmutilDestTimeEdit, &QSpinBox::valueChanged,
@@ -170,6 +189,7 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     this->tmutilPathEdit->setText(tmutilPath());
     this->tmutilStatTimeEdit->setValue(tmutilStatInterval());
     this->tmutilDestTimeEdit->setValue(tmutilDestInterval());
+    this->sudoPathEdit->setText(sudoPath());
 
     this->saveButton->setEnabled(false);
     this->closeButton->setEnabled(allAcceptable());
@@ -186,7 +206,7 @@ void SettingsDialog::closeEvent(QCloseEvent *event)
 
 void SettingsDialog::reject()
 {
-    if (!this->tmutilPathEdit->hasAcceptableInput()) {
+    if (!this->allAcceptable()) {
         qDebug() << "SettingsDialog rejecting reject on account of bad input";
         return;
     }
@@ -204,6 +224,9 @@ auto SettingsDialog::allAcceptable() const -> bool
     if (!this->tmutilDestTimeEdit->hasAcceptableInput()) {
         return false;
     }
+    if (!this->sudoPathEdit->hasAcceptableInput()) {
+        return false;
+    }
     return true;
 }
 
@@ -216,6 +239,9 @@ auto SettingsDialog::anyChanged() const -> bool
         return true;
     }
     if (tmutilDestInterval() != this->tmutilDestTimeEdit->value()) {
+        return true;
+    }
+    if (sudoPath() != this->sudoPathEdit->text()) {
         return true;
     }
     return false;
@@ -236,6 +262,21 @@ void SettingsDialog::handleTmutilPathFinished()
              << newValue;
 }
 
+void SettingsDialog::handleSudoPathFinished()
+{
+    const auto newValue = this->sudoPathEdit->text();
+    if (this->sudoPathEdit->hasAcceptableInput()) {
+        qDebug() << "handleSudoPathFinished good!";
+        const auto oldValue = sudoPath();
+        if (oldValue != newValue) {
+            this->saveButton->setEnabled(true);
+        }
+        return;
+    }
+    qDebug() << "handleSudoPathFinished bad"
+             << newValue;
+}
+
 void SettingsDialog::handleTmutilPathChanged(const QString &value)
 {
     this->closeButton->setEnabled(allAcceptable() && !anyChanged());
@@ -246,12 +287,31 @@ void SettingsDialog::handleTmutilPathChanged(const QString &value)
         const auto changed = tmutilPath() != value;
         const auto styleSheet = changed
                 ? QString(goodValueStyle)
-                                    : this->origPathStyle;
+                                    : this->tmutilPathStyle;
         this->tmutilPathEdit->setStyleSheet(styleSheet);
     }
     else {
         qDebug() << "handleTmutilPathChanged unacceptable:" << value;
         this->tmutilPathEdit->setStyleSheet(badValueStyle);
+    }
+}
+
+void SettingsDialog::handleSudoPathChanged(const QString &value)
+{
+    this->closeButton->setEnabled(allAcceptable() && !anyChanged());
+    this->saveButton->setEnabled(allAcceptable() && anyChanged());
+
+    if (this->sudoPathEdit->hasAcceptableInput()) {
+        qDebug() << "handleSudoPathChanged acceptable:" << value;
+        const auto changed = sudoPath() != value;
+        const auto styleSheet = changed
+                                    ? QString(goodValueStyle)
+                                    : this->sudoPathStyle;
+        this->sudoPathEdit->setStyleSheet(styleSheet);
+    }
+    else {
+        qDebug() << "handleSudoPathChanged unacceptable:" << value;
+        this->sudoPathEdit->setStyleSheet(badValueStyle);
     }
 }
 
@@ -292,7 +352,7 @@ void SettingsDialog::save()
     {
         const auto oldValue = tmutilPath();
         const auto newValue = this->tmutilPathEdit->text();
-        this->tmutilPathEdit->setStyleSheet(this->origPathStyle);
+        this->tmutilPathEdit->setStyleSheet(this->tmutilPathStyle);
         if (oldValue != newValue) {
             setTmutilPath(newValue);
             emit tmutilPathChanged(newValue);
@@ -316,6 +376,15 @@ void SettingsDialog::save()
             emit tmutilDestinationsIntervalChanged(newValue);
         }
     }
+    {
+        const auto oldValue = sudoPath();
+        const auto newValue = this->sudoPathEdit->text();
+        this->sudoPathEdit->setStyleSheet(this->sudoPathStyle);
+        if (oldValue != newValue) {
+            setSudoPath(newValue);
+            emit sudoPathChanged(newValue);
+        }
+    }
     this->saveButton->setEnabled(false);
     this->accept();
 }
@@ -334,6 +403,24 @@ void SettingsDialog::openTmutilPathDialog()
         qDebug() << "openFileDialog:" << files;
         if (!files.isEmpty()) {
             this->tmutilPathEdit->setText(files.first());
+        }
+    }
+}
+
+void SettingsDialog::openSudoPathDialog()
+{
+    QFileDialog dialog{this};
+    dialog.setWindowTitle(tr("Executable File"));
+    dialog.setDirectory("/");
+    dialog.setFileMode(QFileDialog::ExistingFile);
+    //dialog.setOptions(QFileDialog::DontUseNativeDialog);
+    dialog.setFilter(QDir::Hidden|QDir::AllEntries);
+    dialog.setNameFilter("*");
+    if (dialog.exec()) {
+        const auto files = dialog.selectedFiles();
+        qDebug() << "openFileDialog:" << files;
+        if (!files.isEmpty()) {
+            this->sudoPathEdit->setText(files.first());
         }
     }
 }
