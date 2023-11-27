@@ -69,6 +69,7 @@ auto toPlistDictVector(const plist_array& array)
 auto decodeBackupPhase(const plist_string &name) -> QString
 {
     if (name == "ThinningPostBackup") {
+        // a.k.a. "Cleaning up"
         return "Thinning Post Backup";
     }
     if (name == "FindingChanges") {
@@ -138,6 +139,49 @@ auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
     return {};
 }
 
+class TableWidgetItem: public QTableWidgetItem {
+public:
+    static auto cellWidget(const QTableWidgetItem &item) -> QWidget*;
+    static auto progressBar(const QTableWidgetItem &item) -> QProgressBar*;
+
+    using QTableWidgetItem::QTableWidgetItem;
+
+    [[nodiscard]] auto clone() const -> QTableWidgetItem* override;
+
+    auto operator<(const QTableWidgetItem &other) const -> bool override;
+};
+
+auto TableWidgetItem::cellWidget(const QTableWidgetItem &item) -> QWidget*
+{
+    if (const auto w = item.tableWidget()) {
+        return w->cellWidget(item.row(), item.column());
+    }
+    return {};
+}
+
+auto TableWidgetItem::progressBar(const QTableWidgetItem &item)
+    -> QProgressBar*
+{
+    return dynamic_cast<QProgressBar*>(cellWidget(item));
+}
+
+auto TableWidgetItem::clone() const -> QTableWidgetItem*
+{
+    return new TableWidgetItem{*this};
+}
+
+auto TableWidgetItem::operator<(const QTableWidgetItem &other) const -> bool
+{
+    if (this->text().isEmpty() && other.text().isEmpty()) {
+        const auto thisProgress = progressBar(*this);
+        const auto otherProgress = progressBar(other);
+        if (thisProgress && otherProgress) {
+            return thisProgress->value() < otherProgress->value();
+        }
+    }
+    return QTableWidgetItem::operator<(other);
+}
+
 }
 
 DestinationsWidget::DestinationsWidget(QWidget *parent)
@@ -161,7 +205,7 @@ auto DestinationsWidget::createdItem(int row, int column,
 {
     auto item = this->item(row, column);
     if (!item) {
-        item = new QTableWidgetItem;
+        item = new TableWidgetItem;
         item->setFlags(itemFlags);
         item->setTextAlignment(textAlign);
         this->setItem(row, column, item);
@@ -310,8 +354,9 @@ void DestinationsWidget::update(
                             : std::filesystem::space_info{};
         {
             const auto used = si.capacity - si.free;
-            const auto percentUsage =
-                static_cast<int>((double(used) / double(si.capacity)) * 100.0);
+            const auto percentUsage = (si.capacity != 0u)
+                ? static_cast<int>((double(used) / double(si.capacity)) * 100.0)
+                : 0;
             auto widget = new QProgressBar{this};
             widget->setOrientation(Qt::Horizontal);
             constexpr auto percentMin = 0;
@@ -319,12 +364,23 @@ void DestinationsWidget::update(
             widget->setRange(percentMin, percentMax);
             widget->setValue(percentUsage);
             widget->setTextVisible(true);
+            widget->setAlignment(Qt::AlignTop);
             widget->setToolTip(QString("Used %1% (%2b of %3b with %4b remaining).")
                                    .arg(percentUsage)
                                    .arg(used)
                                    .arg(si.capacity)
                                    .arg(si.free));
             this->setCellWidget(row, 4, widget);
+
+            const auto textAlign = Qt::AlignRight|Qt::AlignBottom;
+            const auto text = (mp && !ec)
+                                  ? QString("%1%").arg(percentUsage)
+                                  : QString{};
+            const auto item = this->createdItem(row, 4, textAlign);
+            auto f =
+                QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
+            item->setFont(f);
+            item->setText(text);
         }
         {
             const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
