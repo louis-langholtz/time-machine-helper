@@ -75,7 +75,7 @@ private:
     QString tmutilPath;
     QString sudoPath;
     QFileSystemWatcher *fileSystemWatcher{};
-    QFont pathFont;
+    QFont fixedFont;
 };
 
 #endif // MAINWINDOW_H

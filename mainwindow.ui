@@ -179,6 +179,17 @@
         </column>
         <column>
          <property name="text">
+          <string>Duration</string>
+         </property>
+         <property name="toolTip">
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Time elapsed between start &amp;amp; finish of backup in hh:mm:ss format.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
           <string>Copied Size</string>
          </property>
          <property name="toolTip">

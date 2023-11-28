@@ -43,7 +43,11 @@ constexpr auto machineMacAddrAttr   = "com.apple.backupd.BackupMachineAddress";
 constexpr auto machineCompNameAttr  = "com.apple.backupd.ComputerName";
 constexpr auto machineUuidAttr      = "com.apple.backupd.HostUUID";
 constexpr auto machineModelAttr     = "com.apple.backupd.ModelID";
+
+// Backup level attributes...
 constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
+constexpr auto snapshotStartAttr    = "com.apple.backupd.SnapshotStartDate";
+constexpr auto snapshotFinishAttr   = "com.apple.backupd.SnapshotCompletionDate";
 constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
 
 // Volume level attributes...
@@ -164,7 +168,7 @@ MainWindow::MainWindow(QWidget *parent):
     statusTimer(new QTimer(this)),
     fileSystemWatcher(new QFileSystemWatcher(this))
 {
-    this->pathFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    this->fixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
     this->ui->setupUi(this);
 
@@ -259,7 +263,7 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
             item->setText(0, path);
             item->setToolTip(0, "A \"backup destination\".");
             item->setData(0, Qt::ItemDataRole::UserRole, path);
-            item->setFont(0, pathFont);
+            item->setFont(0, this->fixedFont);
             item->setWhatsThis(0, QString("This is the file system info for '%1'")
                                       .arg(path));
             this->ui->mountPointsWidget->addTopLevelItem(item);
@@ -333,7 +337,7 @@ void MainWindow::addDirEntry(
     auto col = 0;
     auto item = new QTreeWidgetItem;
     item->setTextAlignment(col, Qt::AlignLeft|Qt::AlignVCenter);
-    item->setFont(col, this->pathFont);
+    item->setFont(col, this->fixedFont);
     item->setText(col, QString::fromStdString(path.filename().string()));
     item->setData(col, Qt::ItemDataRole::UserRole, QString(path.c_str()));
     item->setToolTip(col, pathTooltip(attrs));
@@ -355,7 +359,39 @@ void MainWindow::addDirEntry(
     }
 
     ++col;
-    item->setTextAlignment(col, Qt::AlignRight);
+    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
+    item->setFont(col, this->fixedFont);
+    const auto begDate = get(attrs, snapshotStartAttr);
+    // Note: snapshotFinishAttr attribute appears to be removed
+    //   from backup directories by "tmutil delete -p <dir>".
+    const auto endDate = get(attrs, snapshotFinishAttr);
+    if (begDate && endDate) {
+        auto begOkay = false;
+        auto endOkay = false;
+        const auto begMicroSecs = QString(*begDate).toLongLong(&begOkay);
+        const auto endMicroSecs = QString(*endDate).toLongLong(&endOkay);
+        if (begOkay && endOkay) {
+            const auto elapsedMicroSecs = endMicroSecs - begMicroSecs;
+            constexpr auto oneMillion = 1000000;
+            const auto elapsedSecs =
+                (elapsedMicroSecs + (oneMillion/2)) / oneMillion;
+            const auto seconds = elapsedSecs % 60;
+            const auto minutes = (elapsedSecs / 60) % 60;
+            const auto hours = (elapsedSecs / 60 / 60);
+            const auto timeString = QString("%1:%2:%3")
+                                        .arg(hours, 1, 10, QChar('0'))
+                                        .arg(minutes, 2, 10, QChar('0'))
+                                        .arg(seconds, 2, 10, QChar('0'));
+            item->setText(col, timeString);
+        }
+    }
+    else {
+        item->setText(col, QString{});
+    }
+
+    ++col;
+    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
+    item->setFont(col, this->fixedFont);
     if (const auto v = get(attrs, totalBytesCopiedAttr)) {
         isBackup = true;
         auto okay = false;
@@ -373,7 +409,8 @@ void MainWindow::addDirEntry(
     }
 
     ++col;
-    item->setTextAlignment(col, Qt::AlignRight);
+    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
+    item->setFont(col, this->fixedFont);
     if (const auto v = get(attrs, volumeBytesUsedAttr)) {
         item->setText(col, QString(*v));
     }
