@@ -461,9 +461,6 @@ void PathActionDialog::writePasswordToProcess()
     if (status == -1) {
         qDebug() << "writePasswordToProcess errored";
     }
-    else {
-        qDebug() << "wrote" << status << "chars";
-    }
     this->process->setCurrentWriteChannel(saveChannel);
 }
 
