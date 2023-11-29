@@ -65,10 +65,9 @@ public:
     void setProcessFinished(int code, int status);
     void setErrorOccurred(int error);
 
-signals:
-    void passwordRequested();
-
 private:
+    void disablePwdLineEdit();
+
     QSplitter* splitter{};
     QLabel* textLabel{};
     QLabel* pwdPromptLabel{};

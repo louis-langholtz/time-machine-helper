@@ -152,7 +152,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 
 PathActionDialog::~PathActionDialog()
 {
-    qDebug() << "~PathActionDialog called";
+    qDebug() << "~PathActionDialog called while"
+             << (this->process? "processing": "quiet");
 }
 
 void PathActionDialog::closeEvent(QCloseEvent *event)
@@ -361,8 +362,6 @@ void PathActionDialog::startAction()
             this, &PathActionDialog::readProcessOutput);
     connect(this->process, &QProcess::readyReadStandardError,
             this, &PathActionDialog::readProcessError);
-    connect(this, &PathActionDialog::passwordRequested,
-            this, &PathActionDialog::promptForPassword);
     this->stopButton->setEnabled(true);
     this->dismissButton->setEnabled(false);
     this->statusBar->showMessage("Starting process");
@@ -413,7 +412,7 @@ void PathActionDialog::readProcessError()
     qDebug() << "readProcessError called for:" << text;
     if (!text.isEmpty()) {
         if (this->withAdmin && text == "Password:") {
-            emit passwordRequested();
+            this->promptForPassword();
             return;
         }
         text.replace('\n', QString("<br>"));
@@ -425,34 +424,49 @@ void PathActionDialog::readProcessError()
 void PathActionDialog::promptForPassword()
 {
     qInfo() << "promptForPassword called";
-    if (this->pwdPromptLabel || this->pwdLineEdit) {
-        return;
+    if (!this->pwdPromptLabel) {
+        this->pwdPromptLabel = new QLabel{this};
+        this->pwdPromptLabel->setObjectName("pwdPromptLabel");
+        this->pwdPromptLabel->setText(tr("Password:"));
+        this->pwdPromptLabel->setToolTip(
+            "Your local system login password is being"
+            " requested by the running sub-process.");
     }
-    this->pwdPromptLabel = new QLabel{this};
-    this->pwdPromptLabel->setObjectName("pwdPromptLabel");
-    this->pwdPromptLabel->setText(tr("Password:"));
-    this->pwdPromptLabel->setToolTip(
-        "Your local system login password is being"
-        " requested by the running sub-process.");
-    this->pwdLineEdit = new QLineEdit{this};
-    this->pwdLineEdit->setEchoMode(QLineEdit::Password);
-    connect(this->pwdLineEdit, &QLineEdit::returnPressed,
-            this, &PathActionDialog::writePasswordToProcess);
-    this->processIoLayout->insertLayout(0, [this](){
-        auto *layout = new QHBoxLayout;
-        layout->setObjectName("passwordLayout");
-        layout->addWidget(this->pwdPromptLabel);
-        layout->addWidget(this->pwdLineEdit);
-        return layout;
-    }());
+    if (!this->pwdLineEdit) {
+        this->pwdLineEdit = new QLineEdit{this};
+        this->pwdLineEdit->setObjectName("pwdLineEdit");
+        this->pwdLineEdit->setEchoMode(QLineEdit::Password);
+        connect(this->pwdLineEdit, &QLineEdit::returnPressed,
+                this, &PathActionDialog::disablePwdLineEdit);
+        connect(this->pwdLineEdit, &QLineEdit::returnPressed,
+                this, &PathActionDialog::writePasswordToProcess);
+        this->processIoLayout->insertLayout(0, [this](){
+            auto *layout = new QHBoxLayout;
+            layout->setObjectName("passwordLayout");
+            layout->addWidget(this->pwdPromptLabel);
+            layout->addWidget(this->pwdLineEdit);
+            return layout;
+        }());
+    }
+    this->pwdLineEdit->activateWindow();
+    this->pwdLineEdit->setEnabled(true);
+    this->pwdLineEdit->setFocus();
+}
+
+void PathActionDialog::disablePwdLineEdit()
+{
+    if (const auto widget = this->pwdLineEdit) {
+        widget->setEnabled(false);
+    }
 }
 
 void PathActionDialog::writePasswordToProcess()
 {
-    qDebug() << "writePasswordToProcess called";
-    if (!this->process) {
+    if (!this->process || !this->pwdLineEdit) {
+        qInfo() << "writePasswordToProcess called when not ready";
         return;
     }
+    qDebug() << "writePasswordToProcess called";
     const auto saveChannel = this->process->currentWriteChannel();
     this->process->setCurrentWriteChannel(0);
     auto password = this->pwdLineEdit->text();
@@ -490,7 +504,6 @@ void PathActionDialog::setProcessFinished(int code, int status)
     this->process->deleteLater();
     this->process = nullptr;
     if (this->pwdLineEdit) {
-        this->pwdLineEdit->setEnabled(false);
         disconnect(this->pwdLineEdit, &QLineEdit::returnPressed,
                    this, &PathActionDialog::writePasswordToProcess);
     }
