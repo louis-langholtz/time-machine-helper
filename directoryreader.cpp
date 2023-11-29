@@ -32,28 +32,57 @@ auto split(const std::string &s, char delim)
     return elems;
 }
 
-auto getInterestingAttrs(const std::filesystem::path &path,
-                         bool &hasTimeMachineAttrs)
-    -> QMap<QString, QByteArray>
+auto readAttributeNames(const std::filesystem::path &path,
+                        std::error_code &ec)
+    -> std::vector<std::string>
 {
-    auto attrs = QMap<QString, QByteArray>{};
-    const auto size = listxattr(path.c_str(), nullptr, 0, 0);
-    if (size < 0) {
-        qWarning() << "unable to get size for listing attrs for:"
-                   << path.c_str();
+    const auto size = ::listxattr(path.c_str(), nullptr, 0, 0);
+    if (size == static_cast<ssize_t>(-1)) {
+        ec = std::error_code{errno, std::generic_category()};
         return {};
     }
     if (size == 0) {
+        ec = std::error_code{0, std::generic_category()};
         return {};
     }
     auto nameBuffer = std::string{};
     nameBuffer.resize(size + 1u);
     const auto result = listxattr(path.c_str(), nameBuffer.data(), size, 0);
-    if (result < 0) {
-        qWarning() << "unable to list attrs for:" << path.c_str();
+    if (result == static_cast<ssize_t>(-1)) {
+        ec = std::error_code{errno, std::generic_category()};
         return {};
     }
-    const auto xattrNames = split(nameBuffer, '\0');
+    ec = std::error_code{0, std::generic_category()};
+    return split(nameBuffer, '\0');
+}
+
+auto readAttribute(const std::filesystem::path &path,
+                   const std::string& attrName,
+                   std::error_code &ec)
+    -> QByteArray
+{
+    const auto reserveSize =
+        ::getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
+    if (reserveSize == static_cast<ssize_t>(-1)) {
+        ec = std::error_code{errno, std::generic_category()};
+        return {};
+    }
+    QByteArray buffer(qsizetype(reserveSize), Qt::Initialization{});
+    const auto actualSize = ::getxattr(
+        path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
+    if (actualSize == static_cast<ssize_t>(-1)) {
+        ec = std::error_code{errno, std::generic_category()};
+        return {};
+    }
+    return buffer;
+}
+
+auto getInterestingAttrs(const std::filesystem::path &path,
+                         const std::vector<std::string>& xattrNames,
+                         bool &hasTimeMachineAttrs)
+    -> QMap<QString, QByteArray>
+{
+    auto attrs = QMap<QString, QByteArray>{};
     for (const auto& attrName: xattrNames) {
         if (attrName.starts_with(timeMachineAttrPrefix)) {
             hasTimeMachineAttrs = true;
@@ -62,15 +91,9 @@ auto getInterestingAttrs(const std::filesystem::path &path,
                  !attrName.starts_with(backupdAttrPrefix)) {
             continue;
         }
-        const auto reserveSize =
-            getxattr(path.c_str(), attrName.c_str(), nullptr, 0, 0, 0);
-        if (reserveSize < 0) {
-            continue;
-        }
-        QByteArray buffer(qsizetype(reserveSize), Qt::Initialization{});
-        const auto actualSize = getxattr(
-            path.c_str(), attrName.c_str(), buffer.data(), reserveSize, 0, 0);
-        if (actualSize < 0) {
+        auto ec = std::error_code{};
+        const auto buffer = readAttribute(path, attrName, ec);
+        if (ec) {
             continue;
         }
         attrs.insert(QString::fromStdString(attrName), buffer);
@@ -93,7 +116,7 @@ void DirectoryReader::run() {
     const QString pathName =
         item->data(0, Qt::ItemDataRole::UserRole).toString();
     const auto dirPath = std::filesystem::path(pathName.toStdString());
-    std::error_code ec;
+    auto ec = std::error_code{};
     const auto options = directory_options::skip_permission_denied;
     const auto it = directory_iterator{dirPath, options, ec};
     if (ec) {
@@ -107,8 +130,12 @@ void DirectoryReader::run() {
         if ((filename == ".") || (filename == "..")) {
             continue;
         }
+        const auto xattrNames = readAttributeNames(path, ec);
+        if (ec) {
+            continue;
+        }
         auto hasTmAttrs = false;
-        const auto subdirAttrs = getInterestingAttrs(path, hasTmAttrs);
+        const auto subdirAttrs = getInterestingAttrs(path, xattrNames, hasTmAttrs);
         if (!hasTmAttrs) {
             continue;
         }
