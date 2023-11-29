@@ -1,8 +1,10 @@
 #include <sys/xattr.h> // for listxattr system calls
 
+#include <chrono>
 #include <filesystem>
 #include <sstream>
 
+#include <QDeadlineTimer>
 #include <QTreeWidgetItem>
 
 #include "directoryreader.h"
@@ -109,6 +111,24 @@ DirectoryReader::DirectoryReader(std::filesystem::path dir,
     directory{std::move(dir)}
 {}
 
+DirectoryReader::~DirectoryReader()
+{
+    if (this->isRunning()) {
+        qDebug() << "DirectoryReader::~DirectoryReader called while running";
+    }
+
+    this->requestInterruption();
+
+    using namespace std::literals::chrono_literals;
+    constexpr auto initialWait = 500ms;
+    if (this->wait(QDeadlineTimer(initialWait))) {
+        return;
+    }
+
+    this->terminate();
+    this->wait();
+}
+
 void DirectoryReader::run() {
     using std::filesystem::directory_iterator;
     using std::filesystem::directory_options;
@@ -123,6 +143,9 @@ void DirectoryReader::run() {
 
     auto filenames = QSet<QString>{};
     for (const auto& dirEntryIter: it) {
+        if (this->isInterruptionRequested()) {
+            return;
+        }
         const auto& path = dirEntryIter.path();
         const auto filename = path.filename().string();
         if ((filename == ".") || (filename == "..")) {

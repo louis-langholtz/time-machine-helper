@@ -21,6 +21,7 @@ class DirectoryReader: public QThread
 public:
     DirectoryReader(std::filesystem::path dir,
                     QObject *parent = nullptr);
+    ~DirectoryReader() override;
 
 signals:
     void entry(const std::filesystem::path& path,
