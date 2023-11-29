@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <filesystem>
+#include <map>
 #include <vector>
 
 #include <QFont>
@@ -17,9 +18,13 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class QXmlStreamReader;
-class QFileSystemWatcher;
 class QTreeWidgetItem;
 class QTimer;
+
+struct PathInfo {
+    std::filesystem::file_status status;
+    QMap<QString, QByteArray> attributes;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -37,10 +42,10 @@ public:
     void resizeMountPointsColumns();
     void updateMountPointsView(
         const std::vector<std::string>& paths);
-    void updateMountPointsDir(const QString& path);
-    void updateMountPointsFile(const QString& path);
     void mountPointItemExpanded(QTreeWidgetItem *item);
     void mountPointItemCollapsed(QTreeWidgetItem *item);
+    void updatePathInfo(QTreeWidgetItem *item);
+    void updatePathInfos();
     void deleteSelectedPaths();
     void uniqueSizeSelectedPaths();
     void restoreSelectedPaths();
@@ -48,14 +53,19 @@ public:
     void selectedPathsChanged();
     void showAboutDialog();
     void showSettingsDialog();
-    void reportDir(QTreeWidgetItem *item,
-                   std::error_code ec);
-    void addDirEntry(QTreeWidgetItem *parent,
-                     const QMap<QString, QByteArray>& attrs,
-                     const std::filesystem::path& path,
-                     const std::filesystem::file_status& status);
+    void reportDir(const std::filesystem::path& dir,
+                   std::error_code ec,
+                   const QSet<QString>& filenames);
+    void updateDirEntry(const std::filesystem::path& path,
+                        const std::filesystem::file_status& status,
+                        const QMap<QString, QByteArray>& attrs);
     void checkTmStatus();
     void showStatus(const QString& status);
+
+    void addTreeWidgetItem(QTreeWidgetItem *parent,
+                           const std::filesystem::path& path);
+    void changeTreeWidgetItem(QTreeWidgetItem *parent,
+                              const std::filesystem::path& path);
 
 private:
     void handleQueryFailedToStart(const QString &text);
@@ -72,10 +82,11 @@ private:
     Ui::MainWindow *ui{};
     QTimer *destinationsTimer{};
     QTimer *statusTimer{};
+    QTimer *pathInfoTimer{};
     QString tmutilPath;
     QString sudoPath;
-    QFileSystemWatcher *fileSystemWatcher{};
     QFont fixedFont;
+    std::map<std::filesystem::path, PathInfo> pathInfoMap;
 };
 
 #endif // MAINWINDOW_H

@@ -103,27 +103,25 @@ auto getInterestingAttrs(const std::filesystem::path &path,
 
 }
 
-DirectoryReader::DirectoryReader(
-    QTreeWidgetItem *i, QObject *parent):
+DirectoryReader::DirectoryReader(std::filesystem::path dir,
+                                 QObject *parent):
     QThread{parent},
-    item{i}
+    directory{std::move(dir)}
 {}
 
 void DirectoryReader::run() {
     using std::filesystem::directory_iterator;
     using std::filesystem::directory_options;
 
-    const QString pathName =
-        item->data(0, Qt::ItemDataRole::UserRole).toString();
-    const auto dirPath = std::filesystem::path(pathName.toStdString());
     auto ec = std::error_code{};
     const auto options = directory_options::skip_permission_denied;
-    const auto it = directory_iterator{dirPath, options, ec};
+    const auto it = directory_iterator{this->directory, options, ec};
     if (ec) {
-        emit ended(this->item, ec);
+        emit ended(this->directory, ec, {});
         return;
     }
 
+    auto filenames = QSet<QString>{};
     for (const auto& dirEntryIter: it) {
         const auto& path = dirEntryIter.path();
         const auto filename = path.filename().string();
@@ -141,11 +139,15 @@ void DirectoryReader::run() {
         }
         const auto status = dirEntryIter.status(ec);
         if (ec) {
+            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+                continue;
+            }
             qWarning() << "can't get status"
                        << ec.message()
                        << ", path:" << path.c_str();
         }
-        emit entry(this->item, subdirAttrs, path, status);
+        filenames.insert(QString::fromStdString(filename));
+        emit entry(path, status, subdirAttrs);
     }
-    emit ended(this->item, std::error_code{});
+    emit ended(this->directory, std::error_code{}, filenames);
 }

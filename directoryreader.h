@@ -6,9 +6,9 @@
 #include <QByteArray>
 #include <QMap>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QThread>
-#include <QVariant>
 
 class QTreeWidgetItem;
 
@@ -19,20 +19,21 @@ class DirectoryReader: public QThread
     // NOLINTEND
 
 public:
-    DirectoryReader(QTreeWidgetItem *i,
+    DirectoryReader(std::filesystem::path dir,
                     QObject *parent = nullptr);
 
 signals:
-    void entry(QTreeWidgetItem *item,
-               const QMap<QString, QByteArray>& attrs,
-               const std::filesystem::path& path,
-               const std::filesystem::file_status& status);
-    void ended(QTreeWidgetItem *item, std::error_code ec);
+    void entry(const std::filesystem::path& path,
+               const std::filesystem::file_status& status,
+               const QMap<QString, QByteArray>& attrs);
+    void ended(const std::filesystem::path& dir,
+               std::error_code ec,
+               const QSet<QString>& filenames);
 
 private:
     void run() override;
 
-    QTreeWidgetItem *item{};
+    std::filesystem::path directory;
 };
 
 #endif // DIRECTORYREADER_H

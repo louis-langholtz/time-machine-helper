@@ -65,12 +65,40 @@ constexpr auto tmutilUniqueSizeVerb = "uniquesize";
 constexpr auto tmutilRestoreVerb    = "restore";
 constexpr auto tmutilStatusVerb     = "status";
 
-constexpr auto backupsCountCol = 1;
+constexpr auto pathInfoUpdateTime = 10000;
+
+enum FileColumn {
+    filenameCol,
+    backupsCountCol,
+    snapshotTypeCol,
+    durationCol,
+    totalCopiedCol,
+    filesysTypeCol,
+    volBytesUseCol,
+};
 
 constexpr auto enabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 0, 0);}";
 constexpr auto disabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 100, 100);}";
+
+auto toLongLong(const std::optional<QByteArray>& value)
+    -> std::optional<std::int64_t>
+{
+    auto okay = false;
+    const auto number = QString{value.value_or(QByteArray{})}.toLongLong(&okay);
+    return okay? std::optional<std::int64_t>{number}: std::optional<std::int64_t>{};
+}
+
+auto toMegaBytes(const std::optional<std::int64_t>& value)
+    -> QString
+{
+    if (value) {
+        const auto megaBytes = double(*value) / (1000 * 1000);
+        return QString::number(megaBytes, 'f', 2);
+    }
+    return {};
+}
 
 auto toStringList(const QList<QTreeWidgetItem *> &items) -> QStringList
 {
@@ -80,6 +108,16 @@ auto toStringList(const QList<QTreeWidgetItem *> &items) -> QStringList
         result += string;
     }
     return result;
+}
+
+auto toIndicatorPolicy(const std::filesystem::file_type& value)
+    -> QTreeWidgetItem::ChildIndicatorPolicy
+{
+    using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+    using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
+    return (value == std::filesystem::file_type::directory)
+               ? ShowIndicator
+               : DontShowIndicator;
 }
 
 auto get(const QMap<QString, QByteArray> &attrs, const QString &key)
@@ -159,14 +197,101 @@ auto findDeletableTopLevelItems(
     return result;
 }
 
+auto findItem(QTreeWidgetItem *item,
+              std::filesystem::path::iterator first,
+              const std::filesystem::path::iterator& last)
+    -> QTreeWidgetItem*
+{
+    if (!item) {
+        return nullptr;
+    }
+    for (; first != last; ++first) {
+        auto foundChild = static_cast<QTreeWidgetItem*>(nullptr);
+        const auto count = item->childCount();
+        for (auto i = 0; i < count; ++i) {
+            const auto child = item->child(i);
+            if (child && child->text(0) == first->c_str()) {
+                foundChild = child;
+                break;
+            }
+        }
+        if (!foundChild) {
+            break;
+        }
+        item = foundChild;
+    }
+    return (first == last) ? item : nullptr;
+}
+
+auto findItem(QTreeWidget& tree,
+              const std::filesystem::path::iterator& first,
+              const std::filesystem::path::iterator& last)
+    -> QTreeWidgetItem*
+{
+    const auto count = tree.topLevelItemCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto item = tree.topLevelItem(i);
+        if (!item) {
+            continue;
+        }
+        const auto key = item->text(0);
+        const auto root = std::filesystem::path{key.toStdString()};
+        const auto result = std::mismatch(first, last, root.begin(), root.end());
+        if (result.second == root.end()) {
+            return findItem(item, result.first, last);
+        }
+    }
+    return nullptr;
+}
+
+auto findChild(QTreeWidgetItem *parent,
+               const std::filesystem::path& path)
+    -> std::pair<QTreeWidgetItem*, int>
+{
+    const auto count = parent->childCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto child = parent->child(i);
+        const QString pathName =
+            child->data(0, Qt::ItemDataRole::UserRole).toString();
+        if (pathName == path.c_str()) {
+            return {child, i};
+        }
+    }
+    return {};
+}
+
+auto operator==(const std::filesystem::file_status& lhs,
+                const std::filesystem::file_status& rhs) noexcept
+{
+    return (lhs.permissions() == rhs.permissions()) &&
+           (lhs.type() == rhs.type());
+}
+
+auto operator==(const PathInfo& lhs, const PathInfo& rhs)
+{
+    return (lhs.status == rhs.status) &&
+           (lhs.attributes == rhs.attributes);
+}
+
+void remove(std::set<QTreeWidgetItem*>& items, QTreeWidgetItem* item)
+{
+    if (!item) {
+        return;
+    }
+    items.erase(item);
+    const auto count = item->childCount();
+    for (auto i = 0; i < count; ++i) {
+        remove(items, item->child(i));
+    }
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
     ui(new Ui::MainWindow),
     destinationsTimer(new QTimer(this)),
-    statusTimer(new QTimer(this)),
-    fileSystemWatcher(new QFileSystemWatcher(this))
+    statusTimer(new QTimer(this))
 {
     this->fixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
@@ -192,10 +317,6 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::showAboutDialog);
     connect(this->ui->actionSettings, &QAction::triggered,
             this, &MainWindow::showSettingsDialog);
-    connect(this->fileSystemWatcher, &QFileSystemWatcher::directoryChanged,
-            this, &MainWindow::updateMountPointsDir);
-    connect(this->fileSystemWatcher, &QFileSystemWatcher::fileChanged,
-            this, &MainWindow::updateMountPointsFile);
     connect(this->ui->deletingPushButton, &QPushButton::pressed,
             this, &MainWindow::deleteSelectedPaths);
     connect(this->ui->uniqueSizePushButton, &QPushButton::pressed,
@@ -279,25 +400,58 @@ void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
     }
 }
 
-void MainWindow::reportDir(QTreeWidgetItem *item,
-                           std::error_code ec)
+void MainWindow::reportDir(const std::filesystem::path& dir,
+                           std::error_code ec,
+                           const QSet<QString>& filenames)
 {
+    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+        qDebug() << "MainWindow::reportDir called for enoent";
+        return;
+    }
+    const auto parent = ::findItem(*(this->ui->mountPointsWidget),
+                                   dir.begin(), dir.end());
+    if (!parent) {
+        qDebug() << "MainWindow::reportDir parent not found";
+        return;
+    }
     const QString pathName =
-        item->data(0, Qt::ItemDataRole::UserRole).toString();
+        parent->data(0, Qt::ItemDataRole::UserRole).toString();
     if (!ec) {
-        if (!this->fileSystemWatcher->addPath(pathName)) {
-            qInfo() << "reportDir unable to add path to watcher:"
-                    << pathName;
+        auto itemsToDelete = std::vector<QTreeWidgetItem*>{};
+        const auto count = parent->childCount();
+        for (auto i = 0; i < count; ++i) {
+            const auto child = parent->child(i);
+            if (!child) {
+                continue;
+            }
+            const auto filename = child->text(0);
+            if (!filenames.contains(filename)) {
+                const auto key =
+                    std::filesystem::path{pathName.toStdString() + "/" + filename.toStdString()};
+                this->pathInfoMap.erase(key);
+                itemsToDelete.push_back(child);
+            }
         }
-        else {
-            qDebug() << "reportDir added path to watcher:"
-                     << pathName;
+        if (!itemsToDelete.empty()) {
+            qDebug() << "MainWindow::reportDir found" << itemsToDelete.size() << "items to delete";
+        }
+        for (auto* item: itemsToDelete) {
+            delete item;
+        }
+        const auto deletedCount = static_cast<int>(itemsToDelete.size());
+        const auto backupsCount = parent->text(backupsCountCol);
+        if (!backupsCount.isEmpty()) {
+            auto ok = false;
+            parent->setText(backupsCountCol,
+                            QString::number(backupsCount.toLongLong(&ok) - deletedCount));
         }
         return;
     }
 
-    item->setToolTip(0, cantListDirWarning);
-    item->setBackground(0, QBrush(QColor(Qt::red)));
+    qDebug() << "MainWindow::reportDir called" << ec.message();
+
+    parent->setToolTip(0, cantListDirWarning);
+    parent->setBackground(0, QBrush(QColor(Qt::red)));
 
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
@@ -325,42 +479,61 @@ void MainWindow::reportDir(QTreeWidgetItem *item,
     msgBox.exec();
 }
 
-void MainWindow::addDirEntry(
-    QTreeWidgetItem *parent,
-    const QMap<QString, QByteArray>& attrs,
+void MainWindow::updateDirEntry(
     const std::filesystem::path& path,
-    const std::filesystem::file_status& status)
+    const std::filesystem::file_status& status,
+    const QMap<QString, QByteArray>& attrs)
 {
-    using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
-    using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
-
-    auto col = 0;
-    auto item = new QTreeWidgetItem;
-    item->setTextAlignment(col, Qt::AlignLeft|Qt::AlignVCenter);
-    item->setFont(col, this->fixedFont);
-    item->setText(col, QString::fromStdString(path.filename().string()));
-    item->setData(col, Qt::ItemDataRole::UserRole, QString(path.c_str()));
-    item->setToolTip(col, pathTooltip(attrs));
-
-    ++col;
-    item->setTextAlignment(col, Qt::AlignRight);
-    if (get(attrs, machineUuidAttr)) {
-        item->setText(col, "?");
-        item->setToolTip(col, "Expand to get value.");
+    const auto machineUuid = get(attrs, machineUuidAttr);
+    const auto snapshotType = get(attrs, snapshotTypeAttr);
+    const auto totalCopied = get(attrs, totalBytesCopiedAttr);
+    const auto pathInfo = PathInfo{status, attrs};
+    const auto res = this->pathInfoMap.emplace(path, pathInfo);
+    const auto parent = ::findItem(*(this->ui->mountPointsWidget),
+                                   path.begin(), --path.end());
+    if (!parent) {
+        qDebug() << "MainWindow::updateDirEntry parent not found";
+        return;
+    }
+    auto item = static_cast<QTreeWidgetItem*>(nullptr);
+    if (res.second) {
+        item = new QTreeWidgetItem;
+        item->setTextAlignment(filenameCol, Qt::AlignLeft|Qt::AlignVCenter);
+        item->setFont(filenameCol, this->fixedFont);
+        item->setText(filenameCol, QString::fromStdString(path.filename().string()));
+        item->setData(filenameCol, Qt::ItemDataRole::UserRole, QString(path.c_str()));
+        item->setToolTip(filenameCol, pathTooltip(attrs));
+        item->setTextAlignment(backupsCountCol, Qt::AlignRight);
+        item->setText(backupsCountCol, machineUuid? "?": "");
+        item->setToolTip(backupsCountCol, machineUuid? "Expand to get value.": "");
+        item->setTextAlignment(snapshotTypeCol, Qt::AlignRight);
+        item->setTextAlignment(durationCol, Qt::AlignRight|Qt::AlignVCenter);
+        item->setFont(durationCol, this->fixedFont);
+        item->setTextAlignment(totalCopiedCol, Qt::AlignRight|Qt::AlignVCenter);
+        item->setFont(totalCopiedCol, this->fixedFont);
+        item->setTextAlignment(filesysTypeCol, Qt::AlignCenter);
+        item->setTextAlignment(volBytesUseCol, Qt::AlignRight|Qt::AlignVCenter);
+        item->setFont(volBytesUseCol, this->fixedFont);
+        parent->addChild(item);
+        if (snapshotType || totalCopied) {
+            auto ok = false;
+            const auto t = parent->text(backupsCountCol);
+            parent->setText(backupsCountCol,
+                            QString::number(t.toLongLong(&ok) + 1));
+        }
+    }
+    else {
+        item = ::findChild(parent, path).first;
+        if (item->isExpanded()) {
+            this->updatePathInfo(item);
+        }
+        if (res.first->second == pathInfo) {
+            return;
+        }
     }
 
-    auto isBackup = false;
+    item->setText(snapshotTypeCol, QString{snapshotType.value_or(QByteArray{})});
 
-    ++col;
-    item->setTextAlignment(col, Qt::AlignRight);
-    if (const auto v = get(attrs, snapshotTypeAttr)) {
-        isBackup = true;
-        item->setText(col, QString(*v));
-    }
-
-    ++col;
-    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
-    item->setFont(col, this->fixedFont);
     const auto begDate = get(attrs, snapshotStartAttr);
     // Note: snapshotFinishAttr attribute appears to be removed
     //   from backup directories by "tmutil delete -p <dir>".
@@ -382,55 +555,47 @@ void MainWindow::addDirEntry(
                                         .arg(hours, 1, 10, QChar('0'))
                                         .arg(minutes, 2, 10, QChar('0'))
                                         .arg(seconds, 2, 10, QChar('0'));
-            item->setText(col, timeString);
+            item->setText(durationCol, timeString);
         }
     }
     else {
-        item->setText(col, QString{});
+        item->setText(durationCol, QString{});
     }
 
-    ++col;
-    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
-    item->setFont(col, this->fixedFont);
-    if (const auto v = get(attrs, totalBytesCopiedAttr)) {
-        isBackup = true;
-        auto okay = false;
-        const auto bytes = QString(*v).toLongLong(&okay);
-        if (okay) {
-            const auto megaBytes = double(bytes) / (1000 * 1000);
-            item->setText(col, QString::number(megaBytes, 'f', 2));
-        }
-    }
-
-    ++col;
-    item->setTextAlignment(col, Qt::AlignCenter);
-    if (const auto v = get(attrs, fileSystemTypeAttr)) {
-        item->setText(col, QString(*v));
-    }
-
-    ++col;
-    item->setTextAlignment(col, Qt::AlignRight|Qt::AlignVCenter);
-    item->setFont(col, this->fixedFont);
-    if (const auto v = get(attrs, volumeBytesUsedAttr)) {
-        item->setText(col, QString(*v));
-    }
-
-    const auto indicatorPolicy =
-        (status.type() == std::filesystem::file_type::directory)
-                                     ? ShowIndicator
-                                     : DontShowIndicator;
+    item->setText(totalCopiedCol, toMegaBytes(toLongLong(totalCopied)));
+    item->setText(filesysTypeCol, QString{get(attrs, fileSystemTypeAttr).value_or(QByteArray{})});
+    item->setText(volBytesUseCol, QString(get(attrs, volumeBytesUsedAttr).value_or(QByteArray{})));
 
     // Following may not work. For more info, see:
     // https://stackoverflow.com/q/30088705/7410358
     // https://bugreports.qt.io/browse/QTBUG-28312
-    item->setChildIndicatorPolicy(indicatorPolicy);
+    item->setChildIndicatorPolicy(toIndicatorPolicy(status.type()));
+}
 
-    parent->addChild(item);
-    if (isBackup) {
-        auto ok = false;
-        const auto t = parent->text(backupsCountCol);
-        parent->setText(backupsCountCol,
-                        QString::number(t.toLongLong(&ok) + 1));
+void MainWindow::updatePathInfo(QTreeWidgetItem *item)
+{
+    const QString pathName =
+        item->data(0, Qt::ItemDataRole::UserRole).toString();
+    auto *workerThread = new DirectoryReader(pathName.toStdString(), this);
+    connect(workerThread, &DirectoryReader::ended,
+            this, &MainWindow::reportDir);
+    connect(workerThread, &DirectoryReader::entry,
+            this, &MainWindow::updateDirEntry);
+    connect(workerThread, &DirectoryReader::finished,
+            workerThread, &QObject::deleteLater);
+    connect(this, &MainWindow::destroyed,
+            workerThread, &DirectoryReader::quit);
+    workerThread->start();
+}
+
+void MainWindow::updatePathInfos()
+{
+    const auto count = this->ui->mountPointsWidget->topLevelItemCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto item = this->ui->mountPointsWidget->topLevelItem(i);
+        if (item->isExpanded()) {
+            updatePathInfo(item);
+        }
     }
 }
 
@@ -438,19 +603,12 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
 {
     qDebug() << "got mount point expanded signal"
              << "for item:" << item->text(0);
-    const auto backupsCount = item->text(backupsCountCol);
-    if (!backupsCount.isEmpty()) {
-        item->setText(backupsCountCol, "?");
+    updatePathInfo(item);
+    if (!this->pathInfoTimer) {
+        this->pathInfoTimer = new QTimer{this};
+        connect(this->pathInfoTimer, &QTimer::timeout, this, &MainWindow::updatePathInfos);
+        this->pathInfoTimer->start(pathInfoUpdateTime);
     }
-
-    auto *workerThread = new DirectoryReader(item, this);
-    connect(workerThread, &DirectoryReader::ended,
-            this, &MainWindow::reportDir);
-    connect(workerThread, &DirectoryReader::entry,
-            this, &MainWindow::addDirEntry);
-    connect(workerThread, &DirectoryReader::finished,
-            workerThread, &QObject::deleteLater);
-    workerThread->start();
 }
 
 void MainWindow::mountPointItemCollapsed( // NOLINT(readability-convert-member-functions-to-static)
@@ -458,9 +616,6 @@ void MainWindow::mountPointItemCollapsed( // NOLINT(readability-convert-member-f
 {
     qDebug() << "got mount point collapsed signal"
              << "for item:" << item->text(0);
-    for (const auto* child: item->takeChildren()) {
-        delete child;
-    }
 }
 
 void MainWindow::resizeMountPointsColumns()
@@ -469,20 +624,6 @@ void MainWindow::resizeMountPointsColumns()
     for (auto col = 0; col < count; ++col) {
         this->ui->mountPointsWidget->resizeColumnToContents(col);
     }
-}
-
-void MainWindow::updateMountPointsDir(const QString &path)
-{
-    qInfo() << "updateMountPointsDir called for path:" << path;
-    qInfo() << "d dirs watched" << this->fileSystemWatcher->directories();
-    qInfo() << "d fils watched" << this->fileSystemWatcher->files();
-}
-
-void MainWindow::updateMountPointsFile(const QString &path)
-{
-    qInfo() << "updateMountPointsFile called for path:" << path;
-    qInfo() << "f dirs watched" << this->fileSystemWatcher->directories();
-    qInfo() << "f fils watched" << this->fileSystemWatcher->files();
 }
 
 void MainWindow::deleteSelectedPaths()
