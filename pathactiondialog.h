@@ -14,6 +14,7 @@ class QSplitter;
 class QLineEdit;
 class QLayout;
 class QVBoxLayout;
+class QCheckBox;
 
 class PathActionDialog : public QDialog
 {
@@ -36,6 +37,7 @@ public:
     [[nodiscard]] auto lastArgs() const -> QStringList;
     [[nodiscard]] auto action() const -> QString;
     [[nodiscard]] auto asRoot() const noexcept -> bool;
+    [[nodiscard]] auto askPass() const noexcept -> bool;
     [[nodiscard]] auto environment() const -> QProcessEnvironment;
     [[nodiscard]] auto tmutilPath() const -> QString;
     [[nodiscard]] auto sudoPath() const -> QString;
@@ -47,7 +49,8 @@ public:
     void setPaths(const QStringList& paths);
     void setLastArgs(const QStringList& args);
     void setAction(const QString& action);
-    void setAsRoot(bool asRoot);
+    void setAsRoot(bool value);
+    void setAskPass(bool value);
     void setEnvironment(
         const QProcessEnvironment& environment);
     void setTmutilPath(const QString& path);
@@ -67,11 +70,15 @@ public:
 
 private:
     void disablePwdLineEdit();
+    void changeAsRoot(int);
+    void changeAskPass(int);
 
     QSplitter* splitter{};
     QLabel* textLabel{};
     QLabel* pwdPromptLabel{};
     QTextEdit* pathsWidget{};
+    QCheckBox* withAdminCheckBox{};
+    QCheckBox* withAskPassCheckBox{};
     QPushButton* yesButton{};
     QPushButton* noButton{};
     QPushButton* stopButton{};
@@ -92,7 +99,7 @@ private:
     QString verb;
     int stopSig{};
     bool withAdmin{};
-    bool askPass{};
+    bool withAskPass{};
 };
 
 #endif // PATHACTIONDIALOG_H

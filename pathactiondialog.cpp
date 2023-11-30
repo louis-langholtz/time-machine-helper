@@ -3,7 +3,9 @@
 #include <csignal>
 #include <system_error>
 
+#include <QCheckBox>
 #include <QCloseEvent>
+#include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -47,6 +49,8 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     splitter{new QSplitter{this}},
     textLabel{new QLabel{this}},
     pathsWidget{new QTextEdit{this}},
+    withAdminCheckBox{new QCheckBox{"As Admin", this}},
+    withAskPassCheckBox{new QCheckBox{this}},
     yesButton{new QPushButton{"Yes", this}},
     noButton{new QPushButton{"No", this}},
     stopButton{new QPushButton{"Stop", this}},
@@ -77,6 +81,21 @@ PathActionDialog::PathActionDialog(QWidget *parent):
         QSizePolicy::Preferred, QSizePolicy::Maximum);
     this->pathsWidget->viewport()->setSizePolicy(
         QSizePolicy::Preferred, QSizePolicy::Maximum);
+
+    this->withAdminCheckBox->setChecked(this->withAdmin);
+    this->withAdminCheckBox->setToolTip(
+        tr("Check this box to run the action with administrator "
+           "privileges (using \"sudo\")"));
+
+    this->withAskPassCheckBox->setText(
+        tr("External Password Prompter"));
+    this->withAskPassCheckBox->setToolTip(
+        "Check this box to use an external password prompting "
+        "application (that supports sudo's \"--askpass\" option)."
+        " Otherwise, this application will prompt you itself if "
+        "required.");
+    this->withAskPassCheckBox->setChecked(this->withAskPass);
+    this->withAskPassCheckBox->setEnabled(this->withAdmin);
 
     this->yesButton->setEnabled(false);
 
@@ -114,6 +133,17 @@ PathActionDialog::PathActionDialog(QWidget *parent):
                 auto *frameLayout = new QVBoxLayout;
                 frameLayout->addWidget(this->textLabel);
                 frameLayout->addWidget(this->pathsWidget);
+                const auto options = new QGroupBox{"With these options?", this};
+                options->setFont(this->textLabel->font());
+                options->setFlat(true);
+                options->setLayout([this](){
+                    auto *layout = new QHBoxLayout;
+                    layout->setAlignment(Qt::AlignLeft);
+                    layout->addWidget(this->withAdminCheckBox);
+                    layout->addWidget(this->withAskPassCheckBox);
+                    return layout;
+                }());
+                frameLayout->addWidget(options);
                 frameLayout->addLayout([this](){
                     auto *layout = new QHBoxLayout;
                     layout->setObjectName("choiceLayout");
@@ -142,6 +172,10 @@ PathActionDialog::PathActionDialog(QWidget *parent):
         return mainLayout;
     }());
 
+    connect(this->withAdminCheckBox, &QCheckBox::stateChanged,
+            this, &PathActionDialog::changeAsRoot);
+    connect(this->withAskPassCheckBox, &QCheckBox::stateChanged,
+            this, &PathActionDialog::changeAskPass);
     connect(this->noButton, &QPushButton::clicked,
             this, &PathActionDialog::close);
     connect(this->stopButton, &QPushButton::clicked,
@@ -287,9 +321,17 @@ void PathActionDialog::setAction(const QString &action)
     }
 }
 
-void PathActionDialog::setAsRoot(bool asRoot)
+void PathActionDialog::setAsRoot(bool value)
 {
-    this->withAdmin = asRoot;
+    this->withAdmin = value;
+    this->withAdminCheckBox->setChecked(value);
+    this->withAskPassCheckBox->setEnabled(value);
+}
+
+void PathActionDialog::setAskPass(bool value)
+{
+    this->withAskPass = value;
+    this->withAskPassCheckBox->setChecked(value);
 }
 
 void PathActionDialog::setEnvironment(
@@ -320,8 +362,12 @@ void PathActionDialog::setStopSignal(int sig)
 
 void PathActionDialog::startAction()
 {
+    this->withAdminCheckBox->setEnabled(false);
+    this->withAskPassCheckBox->setEnabled(false);
+
     this->yesButton->setEnabled(false);
     this->noButton->setEnabled(false);
+
     this->outputWidget->setEnabled(true);
 
     const auto program = QString((this->withAdmin)
@@ -329,13 +375,12 @@ void PathActionDialog::startAction()
 
     auto argList = QStringList();
     if (this->withAdmin) {
-        if (this->askPass) {
+        if (this->withAskPass) {
             argList << "--askpass";
         }
         else {
             argList << "--stdin";
         }
-        //argList << "-w";
         argList << this->tmuPath;
     }
     argList << this->verb;
@@ -458,6 +503,18 @@ void PathActionDialog::disablePwdLineEdit()
     if (const auto widget = this->pwdLineEdit) {
         widget->setEnabled(false);
     }
+}
+
+void PathActionDialog::changeAsRoot(int state)
+{
+    qDebug() << "PathActionDialog::changeAsRoot called for" << state;
+    this->setAsRoot(state != Qt::Unchecked);
+}
+
+void PathActionDialog::changeAskPass(int state)
+{
+    qDebug() << "PathActionDialog::changeAskPass called for" << state;
+    this->setAskPass(state != Qt::Unchecked);
 }
 
 void PathActionDialog::writePasswordToProcess()
