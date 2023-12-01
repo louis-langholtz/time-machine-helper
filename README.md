@@ -7,6 +7,8 @@ This is a macOS specific application.
 
 ## Features
 
+![Time Machine Helper App](screenshot-app.jpg)
+
 - [x] Monitoring of destinations configured for use with Time Machine.
 - [x] Backup status monitoring showing backup phase, percentage completion, and more.
 - [x] Inspection of mount point paths, their _backup stores_, _machine directories_, _backups_, _volume stores_, and their directories and files, showing snapshot types, copied sizes, file system types, and volume used data sizes.
