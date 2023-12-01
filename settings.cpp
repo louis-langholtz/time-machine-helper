@@ -11,11 +11,13 @@ constexpr auto tmutilDestTimeKey = "tmutilDestinationsInterval";
 constexpr auto mainWindowGeomKey = "mainWindowGeomtry";
 constexpr auto mainWindowStateKey = "mainWindowState";
 constexpr auto sudoPathKey = "sudoPath";
+constexpr auto pathInfoTimeKey = "pathInfoInterval";
 
 constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
 constexpr auto defaultTmutilStatTime = 1000;
 constexpr auto defaultTmutilDestTime = 2500;
 constexpr auto defaultSudoPath = "/usr/bin/sudo";
+constexpr auto defaultPathInfoTime = 10000;
 
 auto settings() -> QSettings &
 {
@@ -59,6 +61,12 @@ auto sudoPath() -> QString
                             QString(defaultSudoPath)).toString();
 }
 
+auto pathInfoInterval() -> int
+{
+    return settings().value(pathInfoTimeKey,
+                            defaultPathInfoTime).toInt();
+}
+
 void setTmutilPath(const QString& value)
 {
     settings().setValue(tmutilPathKey, value);
@@ -87,6 +95,11 @@ void setMainWindowState(const QByteArray &value)
 void setSudoPath(const QString &value)
 {
     settings().setValue(sudoPathKey, value);
+}
+
+void setPathInfoInterval(int value)
+{
+    settings().setValue(pathInfoTimeKey, value);
 }
 
 }

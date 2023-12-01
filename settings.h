@@ -12,6 +12,7 @@ auto tmutilDestInterval() -> int;
 auto mainWindowGeometry() -> QByteArray;
 auto mainWindowState() -> QByteArray;
 auto sudoPath() -> QString;
+auto pathInfoInterval() -> int;
 
 void setTmutilPath(const QString& value);
 void setTmutilStatInterval(int value);
@@ -19,6 +20,7 @@ void setTmutilDestInterval(int value);
 void setMainWindowGeometry(const QByteArray& value);
 void setMainWindowState(const QByteArray& value);
 void setSudoPath(const QString& value);
+void setPathInfoInterval(int value);
 
 }
 
