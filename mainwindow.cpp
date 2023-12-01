@@ -32,6 +32,10 @@ namespace {
 
 constexpr auto toolName = "Time Machine utility";
 
+constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
+constexpr auto backupAttrPrefix = "com.apple.backup.";
+constexpr auto backupdAttrPrefix = "com.apple.backupd.";
+
 // Content of this attribute seems to be comma separated list, where
 // first element is one of the following:
 //   "SnapshotStorage","MachineStore", "Backup", "VolumeStore"
@@ -110,12 +114,27 @@ auto toStringList(const QList<QTreeWidgetItem *> &items) -> QStringList
     return result;
 }
 
-auto toIndicatorPolicy(const std::filesystem::file_type& value)
+auto anyStartsWith(const QMap<QString, QByteArray>& attrs,
+                   const QStringList& prefices) -> bool
+{
+    auto first = attrs.keyBegin();
+    const auto last = attrs.keyEnd();
+    for (auto it = first; it != last; ++it) {
+        for (const auto& prefix: prefices) {
+            if (it->startsWith(prefix)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+auto toIndicatorPolicy(const std::filesystem::file_type& file_type)
     -> QTreeWidgetItem::ChildIndicatorPolicy
 {
     using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
     using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
-    return (value == std::filesystem::file_type::directory)
+    return (file_type == std::filesystem::file_type::directory)
                ? ShowIndicator
                : DontShowIndicator;
 }
@@ -291,7 +310,8 @@ MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
     ui(new Ui::MainWindow),
     destinationsTimer(new QTimer(this)),
-    statusTimer(new QTimer(this))
+    statusTimer(new QTimer(this)),
+    pathInfoTimer(new QTimer{this})
 {
     this->fixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
@@ -348,6 +368,8 @@ MainWindow::MainWindow(QWidget *parent):
             &DestinationsWidget::queryDestinations);
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
+    connect(this->pathInfoTimer, &QTimer::timeout,
+            this, &MainWindow::updatePathInfos);
 
     QTimer::singleShot(0, this, &MainWindow::readSettings);
     QTimer::singleShot(0,
@@ -484,9 +506,15 @@ void MainWindow::updateDirEntry(
     const std::filesystem::file_status& status,
     const QMap<QString, QByteArray>& attrs)
 {
+    if (!anyStartsWith(attrs, {timeMachineAttrPrefix})) {
+        return;
+    }
+
     const auto machineUuid = get(attrs, machineUuidAttr);
     const auto snapshotType = get(attrs, snapshotTypeAttr);
     const auto totalCopied = get(attrs, totalBytesCopiedAttr);
+    const auto fileSystemType = get(attrs, fileSystemTypeAttr);
+    const auto volumeBytesUsed = get(attrs, volumeBytesUsedAttr);
     const auto pathInfo = PathInfo{status, attrs};
     const auto res = this->pathInfoMap.emplace(path, pathInfo);
     const auto parent = ::findItem(*(this->ui->mountPointsWidget),
@@ -563,8 +591,8 @@ void MainWindow::updateDirEntry(
     }
 
     item->setText(totalCopiedCol, toMegaBytes(toLongLong(totalCopied)));
-    item->setText(filesysTypeCol, QString{get(attrs, fileSystemTypeAttr).value_or(QByteArray{})});
-    item->setText(volBytesUseCol, QString(get(attrs, volumeBytesUsedAttr).value_or(QByteArray{})));
+    item->setText(filesysTypeCol, QString{fileSystemType.value_or(QByteArray{})});
+    item->setText(volBytesUseCol, QString(volumeBytesUsed.value_or(QByteArray{})));
 
     // Following may not work. For more info, see:
     // https://stackoverflow.com/q/30088705/7410358
@@ -605,9 +633,6 @@ void MainWindow::mountPointItemExpanded(QTreeWidgetItem *item)
              << "for item:" << item->text(0);
     updatePathInfo(item);
     if (!this->pathInfoTimer) {
-        this->pathInfoTimer = new QTimer{this};
-        connect(this->pathInfoTimer, &QTimer::timeout, this, &MainWindow::updatePathInfos);
-        this->pathInfoTimer->start(pathInfoUpdateTime);
     }
 }
 
@@ -786,6 +811,13 @@ void MainWindow::showSettingsDialog()
             this, &MainWindow::handleTmutilPathChange);
     connect(dialog, &SettingsDialog::sudoPathChanged,
             this, &MainWindow::handleSudoPathChange);
+    connect(dialog, &SettingsDialog::tmutilStatusIntervalChanged,
+            this, &MainWindow::changeTmutilStatusInterval);
+    connect(dialog, &SettingsDialog::tmutilDestinationsIntervalChanged,
+            this, &MainWindow::changeTmutilDestinationsInterval);
+    connect(dialog, &SettingsDialog::pathInfoIntervalChanged,
+            this, &MainWindow::changePathInfoInterval);
+
     connect(dialog, &SettingsDialog::finished,
             dialog, &SettingsDialog::deleteLater);
     dialog->exec();
@@ -951,6 +983,21 @@ void MainWindow::handleTmStatusFinished(int code, int status)
     }
 }
 
+void MainWindow::changeTmutilStatusInterval(int msecs)
+{
+    this->statusTimer->start(msecs);
+}
+
+void MainWindow::changeTmutilDestinationsInterval(int msecs)
+{
+    this->destinationsTimer->start(msecs);
+}
+
+void MainWindow::changePathInfoInterval(int msecs)
+{
+    this->pathInfoTimer->start(msecs);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     qDebug() << "saving mainwindow geometry & state";
@@ -969,4 +1016,5 @@ void MainWindow::readSettings()
     }
     this->destinationsTimer->start(Settings::tmutilDestInterval());
     this->statusTimer->start(Settings::tmutilStatInterval());
+    this->pathInfoTimer->start(Settings::pathInfoInterval());
 }

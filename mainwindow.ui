@@ -119,6 +119,9 @@
       </item>
       <item>
        <widget class="QLabel" name="fileSystemInfoLabel">
+        <property name="toolTip">
+         <string>File system info for Time Machine associated paths.</string>
+        </property>
         <property name="text">
          <string>File System Info</string>
         </property>
@@ -155,12 +158,15 @@
           <string>Path</string>
          </property>
          <property name="toolTip">
-          <string>Path from mount point shown in destination info.</string>
+          <string>Path from mount point shown in Destination Info.</string>
          </property>
         </column>
         <column>
          <property name="text">
           <string>Backups</string>
+         </property>
+         <property name="toolTip">
+          <string>Count of backups in a &quot;machine directory&quot;.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -168,10 +174,10 @@
         </column>
         <column>
          <property name="text">
-          <string>S. Type</string>
+          <string>Snap Type</string>
          </property>
          <property name="toolTip">
-          <string>Snapshot type.</string>
+          <string>Snapshot type for &quot;backup&quot; directories.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>

@@ -77,6 +77,9 @@ private:
                                    int error,
                                    const QString& text);
     void handleTmStatusFinished(int code, int status);
+    void changeTmutilStatusInterval(int msecs);
+    void changeTmutilDestinationsInterval(int msecs);
+    void changePathInfoInterval(int msecs);
 
     QErrorMessage errorMessage;
     Ui::MainWindow *ui{};

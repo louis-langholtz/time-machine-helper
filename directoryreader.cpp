@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <sstream>
 
 #include <QDeadlineTimer>
@@ -10,10 +11,6 @@
 #include "directoryreader.h"
 
 namespace {
-
-constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
-constexpr auto backupAttrPrefix = "com.apple.backup.";
-constexpr auto backupdAttrPrefix    = "com.apple.backupd.";
 
 // From https://stackoverflow.com/a/236803/7410358
 template <typename Out>
@@ -79,28 +76,23 @@ auto readAttribute(const std::filesystem::path &path,
     return buffer;
 }
 
-auto getInterestingAttrs(const std::filesystem::path &path,
-                         const std::vector<std::string>& xattrNames,
-                         bool &hasTimeMachineAttrs)
-    -> QMap<QString, QByteArray>
+auto getAttributes(const std::filesystem::path &path,
+                   const std::vector<std::string>& xattrNames)
+    -> std::optional<QMap<QString, QByteArray>>
 {
     auto attrs = QMap<QString, QByteArray>{};
     for (const auto& attrName: xattrNames) {
-        if (attrName.starts_with(timeMachineAttrPrefix)) {
-            hasTimeMachineAttrs = true;
-        }
-        else if (!attrName.starts_with(backupAttrPrefix) &&
-                 !attrName.starts_with(backupdAttrPrefix)) {
-            continue;
-        }
         auto ec = std::error_code{};
         const auto buffer = readAttribute(path, attrName, ec);
+        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+            return {};
+        }
         if (ec) {
             continue;
         }
         attrs.insert(QString::fromStdString(attrName), buffer);
     }
-    return attrs;
+    return {attrs};
 }
 
 }
@@ -151,26 +143,25 @@ void DirectoryReader::run() {
         if ((filename == ".") || (filename == "..")) {
             continue;
         }
-        const auto xattrNames = readAttributeNames(path, ec);
-        if (ec) {
-            continue;
-        }
-        auto hasTmAttrs = false;
-        const auto subdirAttrs = getInterestingAttrs(path, xattrNames, hasTmAttrs);
-        if (!hasTmAttrs) {
-            continue;
-        }
         const auto status = dirEntryIter.status(ec);
+        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+            continue;
+        }
         if (ec) {
-            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-                continue;
-            }
             qWarning() << "can't get status"
                        << ec.message()
                        << ", path:" << path.c_str();
         }
+        const auto xattrNames = readAttributeNames(path, ec);
+        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+            continue;
+        }
+        const auto xattrMap = getAttributes(path, xattrNames);
+        if (!xattrMap) {
+            continue;
+        }
         filenames.insert(QString::fromStdString(filename));
-        emit entry(path, status, subdirAttrs);
+        emit entry(path, status, *xattrMap);
     }
     emit ended(this->directory, std::error_code{}, filenames);
 }
