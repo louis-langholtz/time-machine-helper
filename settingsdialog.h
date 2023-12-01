@@ -28,9 +28,10 @@ public:
 
 signals:
     void tmutilPathChanged(const QString& path);
+    void sudoPathChanged(const QString& path);
     void tmutilStatusIntervalChanged(int newMsecs);
     void tmutilDestinationsIntervalChanged(int newMsecs);
-    void sudoPathChanged(const QString& path);
+    void pathInfoIntervalChanged(int newMsecs);
 
 private:
     void openTmutilPathDialog();
@@ -41,6 +42,7 @@ private:
     void handleSudoPathChanged(const QString& value);
     void handleStatTimeChanged(int value);
     void handleDestTimeChanged(int value);
+    void handlePathInfoTimeChanged(int value);
     void save();
 
     QPushButton *saveButton{};
@@ -63,6 +65,10 @@ private:
     QLabel *sudoPathLbl{};
     QLineEdit *sudoPathEdit{};
     QPushButton *sudoPathBtn{};
+
+    QString origPathInfoTimeStyle;
+    QLabel *pathInfoTimeLbl{};
+    QSpinBox *pathInfoTimeEdit{};
 
     ExecutableValidator *exePathValidator{};
 };

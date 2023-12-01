@@ -13,8 +13,6 @@
 #include "settings.h"
 #include "settingsdialog.h"
 
-using namespace Settings;
-
 namespace {
 
 constexpr auto minimumTimeMsecs = 250;
@@ -97,6 +95,8 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     sudoPathLbl{new QLabel{this}},
     sudoPathEdit{new QLineEdit{this}},
     sudoPathBtn{new QPushButton{this}},
+    pathInfoTimeLbl{new QLabel{this}},
+    pathInfoTimeEdit{new QSpinBox{this}},
     exePathValidator{new ExecutableValidator{this}}
 {
     this->setAttribute(Qt::WA_DeleteOnClose);
@@ -135,21 +135,35 @@ SettingsDialog::SettingsDialog(QWidget *parent):
     this->sudoPathBtn->setDefault(false);
     this->sudoPathBtn->setAutoDefault(false);
 
+    this->pathInfoTimeLbl->setText(tr("Path Info Interval"));
+    this->pathInfoTimeEdit->setRange(minimumTimeMsecs, maximumTimeMsecs);
+    this->pathInfoTimeEdit->setSingleStep(timeStepMsecs);
+    this->pathInfoTimeEdit->setSuffix(" ms");
+    this->pathInfoTimeEdit->setAlignment(Qt::AlignRight);
+    this->origPathInfoTimeStyle = this->pathInfoTimeEdit->styleSheet();
+
     this->setLayout([this]() {
         auto *mainLayout = new QVBoxLayout;
         mainLayout->addLayout([this]() {
             auto layout = new QGridLayout;
             layout->setColumnStretch(1, 1);
-            layout->addWidget(this->tmutilPathLbl, 0, 0);
-            layout->addWidget(this->tmutilPathEdit, 0, 1);
-            layout->addWidget(this->tmutilPathBtn, 0, 2);
-            layout->addWidget(this->tmutilStatTimeLbl, 1, 0);
-            layout->addWidget(this->tmutilStatTimeEdit, 1, 1);
-            layout->addWidget(this->tmutilDestTimeLbl, 2, 0);
-            layout->addWidget(this->tmutilDestTimeEdit, 2, 1);
-            layout->addWidget(this->sudoPathLbl, 3, 0);
-            layout->addWidget(this->sudoPathEdit, 3, 1);
-            layout->addWidget(this->sudoPathBtn, 3, 2);
+            auto row = 0;
+            layout->addWidget(this->tmutilPathLbl, row, 0);
+            layout->addWidget(this->tmutilPathEdit, row, 1);
+            layout->addWidget(this->tmutilPathBtn, row, 2);
+            ++row;
+            layout->addWidget(this->tmutilStatTimeLbl, row, 0);
+            layout->addWidget(this->tmutilStatTimeEdit, row, 1);
+            ++row;
+            layout->addWidget(this->tmutilDestTimeLbl, row, 0);
+            layout->addWidget(this->tmutilDestTimeEdit, row, 1);
+            ++row;
+            layout->addWidget(this->sudoPathLbl, row, 0);
+            layout->addWidget(this->sudoPathEdit, row, 1);
+            layout->addWidget(this->sudoPathBtn, row, 2);
+            ++row;
+            layout->addWidget(this->pathInfoTimeLbl, row, 0);
+            layout->addWidget(this->pathInfoTimeEdit, row, 1);
             return layout;
         }());
         mainLayout->addLayout([this]() {
@@ -185,11 +199,14 @@ SettingsDialog::SettingsDialog(QWidget *parent):
             this, &SettingsDialog::handleStatTimeChanged);
     connect(this->tmutilDestTimeEdit, &QSpinBox::valueChanged,
             this, &SettingsDialog::handleDestTimeChanged);
+    connect(this->pathInfoTimeEdit, &QSpinBox::valueChanged,
+            this, &SettingsDialog::handlePathInfoTimeChanged);
 
-    this->tmutilPathEdit->setText(tmutilPath());
-    this->tmutilStatTimeEdit->setValue(tmutilStatInterval());
-    this->tmutilDestTimeEdit->setValue(tmutilDestInterval());
-    this->sudoPathEdit->setText(sudoPath());
+    this->tmutilPathEdit->setText(Settings::tmutilPath());
+    this->tmutilStatTimeEdit->setValue(Settings::tmutilStatInterval());
+    this->tmutilDestTimeEdit->setValue(Settings::tmutilDestInterval());
+    this->sudoPathEdit->setText(Settings::sudoPath());
+    this->pathInfoTimeEdit->setValue(Settings::pathInfoInterval());
 
     this->saveButton->setEnabled(false);
     this->closeButton->setEnabled(allAcceptable());
@@ -227,21 +244,27 @@ auto SettingsDialog::allAcceptable() const -> bool
     if (!this->sudoPathEdit->hasAcceptableInput()) {
         return false;
     }
+    if (!this->pathInfoTimeEdit->hasAcceptableInput()) {
+        return false;
+    }
     return true;
 }
 
 auto SettingsDialog::anyChanged() const -> bool
 {
-    if (tmutilPath() != this->tmutilPathEdit->text()) {
+    if (Settings::tmutilPath() != this->tmutilPathEdit->text()) {
         return true;
     }
-    if (tmutilStatInterval() != this->tmutilStatTimeEdit->value()) {
+    if (Settings::tmutilStatInterval() != this->tmutilStatTimeEdit->value()) {
         return true;
     }
-    if (tmutilDestInterval() != this->tmutilDestTimeEdit->value()) {
+    if (Settings::tmutilDestInterval() != this->tmutilDestTimeEdit->value()) {
         return true;
     }
-    if (sudoPath() != this->sudoPathEdit->text()) {
+    if (Settings::sudoPath() != this->sudoPathEdit->text()) {
+        return true;
+    }
+    if (Settings::pathInfoInterval() != this->pathInfoTimeEdit->value()) {
         return true;
     }
     return false;
@@ -252,7 +275,7 @@ void SettingsDialog::handleTmutilPathFinished()
     const auto newValue = this->tmutilPathEdit->text();
     if (this->tmutilPathEdit->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathFinished good!";
-        const auto oldValue = tmutilPath();
+        const auto oldValue = Settings::tmutilPath();
         if (oldValue != newValue) {
             this->saveButton->setEnabled(true);
         }
@@ -267,7 +290,7 @@ void SettingsDialog::handleSudoPathFinished()
     const auto newValue = this->sudoPathEdit->text();
     if (this->sudoPathEdit->hasAcceptableInput()) {
         qDebug() << "handleSudoPathFinished good!";
-        const auto oldValue = sudoPath();
+        const auto oldValue = Settings::sudoPath();
         if (oldValue != newValue) {
             this->saveButton->setEnabled(true);
         }
@@ -284,7 +307,7 @@ void SettingsDialog::handleTmutilPathChanged(const QString &value)
 
     if (this->tmutilPathEdit->hasAcceptableInput()) {
         qDebug() << "handleTmutilPathChanged acceptable:" << value;
-        const auto changed = tmutilPath() != value;
+        const auto changed = Settings::tmutilPath() != value;
         const auto styleSheet = changed
                 ? QString(goodValueStyle)
                                     : this->tmutilPathStyle;
@@ -303,7 +326,7 @@ void SettingsDialog::handleSudoPathChanged(const QString &value)
 
     if (this->sudoPathEdit->hasAcceptableInput()) {
         qDebug() << "handleSudoPathChanged acceptable:" << value;
-        const auto changed = sudoPath() != value;
+        const auto changed = Settings::sudoPath() != value;
         const auto styleSheet = changed
                                     ? QString(goodValueStyle)
                                     : this->sudoPathStyle;
@@ -321,7 +344,7 @@ void SettingsDialog::handleStatTimeChanged(int value)
              << value;
     this->closeButton->setEnabled(allAcceptable() && !anyChanged());
     this->saveButton->setEnabled(allAcceptable() && anyChanged());
-    const auto changed = tmutilStatInterval() != value;
+    const auto changed = Settings::tmutilStatInterval() != value;
     const auto styleSheet = changed
                                 ? QString(goodValueStyle)
                                 : this->origStatTimeStyle;
@@ -334,11 +357,24 @@ void SettingsDialog::handleDestTimeChanged(int value)
              << value;
     this->closeButton->setEnabled(allAcceptable() && !anyChanged());
     this->saveButton->setEnabled(allAcceptable() && anyChanged());
-    const auto changed = tmutilDestInterval() != value;
+    const auto changed = Settings::tmutilDestInterval() != value;
     const auto styleSheet = changed
                                 ? QString(goodValueStyle)
                                 : this->origDestTimeStyle;
     this->tmutilDestTimeEdit->setStyleSheet(styleSheet);
+}
+
+void SettingsDialog::handlePathInfoTimeChanged(int value)
+{
+    qDebug() << "SettingsDialog::handlePathInfoTimeChanged called"
+             << value;
+    this->closeButton->setEnabled(allAcceptable() && !anyChanged());
+    this->saveButton->setEnabled(allAcceptable() && anyChanged());
+    const auto changed = Settings::pathInfoInterval() != value;
+    const auto styleSheet = changed
+                                ? QString(goodValueStyle)
+                                : this->origPathInfoTimeStyle;
+    this->pathInfoTimeEdit->setStyleSheet(styleSheet);
 }
 
 void SettingsDialog::save()
@@ -350,39 +386,48 @@ void SettingsDialog::save()
         return;
     }
     {
-        const auto oldValue = tmutilPath();
+        const auto oldValue = Settings::tmutilPath();
         const auto newValue = this->tmutilPathEdit->text();
         this->tmutilPathEdit->setStyleSheet(this->tmutilPathStyle);
         if (oldValue != newValue) {
-            setTmutilPath(newValue);
+            Settings::setTmutilPath(newValue);
             emit tmutilPathChanged(newValue);
         }
     }
     {
-        const auto oldValue = tmutilStatInterval();
+        const auto oldValue = Settings::tmutilStatInterval();
         const auto newValue = this->tmutilStatTimeEdit->value();
         this->tmutilStatTimeEdit->setStyleSheet(this->origStatTimeStyle);
         if (oldValue != newValue) {
-            setTmutilStatInterval(newValue);
+            Settings::setTmutilStatInterval(newValue);
             emit tmutilStatusIntervalChanged(newValue);
         }
     }
     {
-        const auto oldValue = tmutilDestInterval();
+        const auto oldValue = Settings::tmutilDestInterval();
         const auto newValue = this->tmutilDestTimeEdit->value();
         this->tmutilDestTimeEdit->setStyleSheet(this->origDestTimeStyle);
         if (oldValue != newValue) {
-            setTmutilDestInterval(newValue);
+            Settings::setTmutilDestInterval(newValue);
             emit tmutilDestinationsIntervalChanged(newValue);
         }
     }
     {
-        const auto oldValue = sudoPath();
+        const auto oldValue = Settings::sudoPath();
         const auto newValue = this->sudoPathEdit->text();
         this->sudoPathEdit->setStyleSheet(this->sudoPathStyle);
         if (oldValue != newValue) {
-            setSudoPath(newValue);
+            Settings::setSudoPath(newValue);
             emit sudoPathChanged(newValue);
+        }
+    }
+    {
+        const auto oldValue = Settings::pathInfoInterval();
+        const auto newValue = this->pathInfoTimeEdit->value();
+        this->pathInfoTimeEdit->setStyleSheet(this->origPathInfoTimeStyle);
+        if (oldValue != newValue) {
+            Settings::setPathInfoInterval(newValue);
+            emit pathInfoIntervalChanged(newValue);
         }
     }
     this->saveButton->setEnabled(false);
