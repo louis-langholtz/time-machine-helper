@@ -54,7 +54,7 @@ struct returning_promise {
 
     // Uses code from https://en.cppreference.com/w/cpp/language/coroutines
     void unhandled_exception() {
-        exception = std::current_exception();;
+        exception = std::current_exception();
     }
 
     template<std::convertible_to<ReturnType> From>
