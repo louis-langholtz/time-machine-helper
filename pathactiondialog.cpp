@@ -77,10 +77,11 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->pathsWidget->setObjectName("pathsWidget");
     this->pathsWidget->setReadOnly(true);
     this->pathsWidget->setLineWrapMode(QTextEdit::NoWrap);
+    this->pathsWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    this->pathsWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     this->pathsWidget->setSizePolicy(
-        QSizePolicy::Preferred, QSizePolicy::Maximum);
-    this->pathsWidget->viewport()->setSizePolicy(
-        QSizePolicy::Preferred, QSizePolicy::Maximum);
+        QSizePolicy::Preferred, QSizePolicy::Expanding);
+    this->pathsWidget->setMinimumHeight(0);
 
     this->withAdminCheckBox->setChecked(this->withAdmin);
     this->withAdminCheckBox->setToolTip(
@@ -112,16 +113,16 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->outputWidget->document()->setDefaultStyleSheet(
         "* {font-family: \"Andale Mono\";} .stdout {color:green;} .stderr {color:red;}");
     this->outputWidget->setMinimumHeight(0);
+    this->outputWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     this->outputWidget->setSizePolicy(
         QSizePolicy::Preferred, QSizePolicy::Expanding);
-    this->outputWidget->viewport()->setMinimumHeight(0);
-    this->outputWidget->viewport()->setSizePolicy(
-        QSizePolicy::Preferred, QSizePolicy::Expanding);
-
+    this->outputWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     this->statusBar->showMessage("Awaiting confirmation of action.");
 
     this->processIoLayout->addWidget(this->outputWidget);
     this->processIoLayout->addWidget(this->statusBar);
+    this->processIoLayout->setStretch(0, 1);
+    this->processIoLayout->setStretch(0, 0);
 
     this->setLayout([this](){
         auto *mainLayout = new QVBoxLayout;
@@ -157,15 +158,14 @@ PathActionDialog::PathActionDialog(QWidget *parent):
                 return frameLayout;
             }());
             frame->setSizePolicy(QSizePolicy::Preferred,
-                                 QSizePolicy::Maximum);
+                                 QSizePolicy::Expanding);
             this->splitter->addWidget(frame);
         }
         {
             auto *frame = new QFrame;
             frame->setFrameStyle(QFrame::StyledPanel);
             frame->setLayout(this->processIoLayout);
-            frame->setSizePolicy(QSizePolicy::Preferred,
-                                 QSizePolicy::Minimum);
+            frame->setMinimumHeight(0);
             this->splitter->addWidget(frame);
         }
         mainLayout->addWidget(this->splitter);
@@ -295,8 +295,6 @@ void PathActionDialog::setPaths(const QStringList &paths)
                    margins.top() + margins.bottom() +
                    (sb? sb->height(): 0);
     qDebug() << "setPaths setting max h:" << h;
-    this->pathsWidget->setMaximumHeight(h);
-    this->pathsWidget->viewport()->setMaximumHeight(h);
 }
 
 void PathActionDialog::setLastArgs(const QStringList &args)
