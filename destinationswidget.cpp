@@ -314,7 +314,7 @@ void DestinationsWidget::update(
 {
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    auto mountPoints = std::vector<std::string>{};
+    auto mountPoints = std::map<std::string, plist_dict>{};
     auto row = 0;
     const auto rowCount = int(destinations.size());
     this->setRowCount(rowCount);
@@ -330,10 +330,10 @@ void DestinationsWidget::update(
             item->setText(QString::fromStdString(v.value_or("")));
             item->setToolTip("Backup disk a.k.a. backup destination.");
         }
+        const auto id = get<std::string>(d, "ID");
         {
             const auto item = this->createdItem(row, 1, Qt::AlignVCenter);
-            const auto v = get<std::string>(d, "ID");
-            item->setText(QString::fromStdString(v.value_or("")));
+            item->setText(QString::fromStdString(id.value_or("")));
             item->setFont(font);
         }
         {
@@ -406,7 +406,7 @@ void DestinationsWidget::update(
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
         if (mp) {
-            mountPoints.push_back(*mp);
+            mountPoints.emplace(*mp, d);
         }
         ++row;
     }

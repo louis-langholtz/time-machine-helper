@@ -3,7 +3,6 @@
 
 #include <filesystem>
 #include <map>
-#include <vector>
 
 #include <QFont>
 #include <QMainWindow>
@@ -12,6 +11,8 @@
 #include <QString>
 #include <QVariant>
 #include <QErrorMessage>
+
+#include "plist_object.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -24,6 +25,11 @@ class QTimer;
 struct PathInfo {
     std::filesystem::file_status status;
     QMap<QString, QByteArray> attributes;
+};
+
+struct MachineInfo {
+    QMap<QString, QByteArray> attributes;
+    QSet<QString> destinations;
 };
 
 class MainWindow : public QMainWindow
@@ -41,7 +47,7 @@ public:
     void readSettings();
     void resizeMountPointsColumns();
     void updateMountPointsView(
-        const std::vector<std::string>& paths);
+        const std::map<std::string, plist_dict>& mountPoints);
     void mountPointItemExpanded(QTreeWidgetItem *item);
     void mountPointItemCollapsed(QTreeWidgetItem *item);
     void updatePathInfo(QTreeWidgetItem *item);
@@ -59,6 +65,9 @@ public:
     void updateDirEntry(const std::filesystem::path& path,
                         const std::filesystem::file_status& status,
                         const QMap<QString, QByteArray>& attrs);
+    void updateMachine(const std::string& name,
+                       const QMap<QString, QByteArray>& attrs,
+                       const plist_dict& dict);
     void checkTmStatus();
     void showStatus(const QString& status);
 
@@ -89,6 +98,8 @@ private:
     QString tmutilPath;
     QString sudoPath;
     QFont fixedFont;
+    std::map<std::string, plist_dict> mountMap;
+    std::map<std::string, MachineInfo> machineMap;
     std::map<std::filesystem::path, PathInfo> pathInfoMap;
 };
 

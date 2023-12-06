@@ -1,6 +1,7 @@
 #ifndef DESTINATIONSWIDGET_H
 #define DESTINATIONSWIDGET_H
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,7 @@ public:
     void handleStatus(const plist_object &plist);
 
 signals:
-    void gotPaths(const std::vector<std::string>& paths);
+    void gotPaths(const std::map<std::string, plist_dict>& paths);
     void gotError(const QString& status);
     void failedToStartQuery(const QString& text);
     void wrongQueryInfo(const QString& detail);

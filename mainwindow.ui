@@ -23,12 +23,12 @@
       <item>
        <widget class="QLabel" name="destinationInfoLabel">
         <property name="text">
-         <string>Destination Info</string>
+         <string>Destinations</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="DestinationsWidget" name="destinationsWidget">
+       <widget class="DestinationsWidget" name="destinationsTable">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -43,6 +43,9 @@
         </property>
         <attribute name="horizontalHeaderCascadingSectionResizes">
          <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
         </attribute>
         <attribute name="verticalHeaderMinimumSectionSize">
          <number>30</number>
@@ -112,6 +115,72 @@
       </item>
       <item>
        <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Machines</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="machinesTable">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="sizeAdjustPolicy">
+         <enum>QAbstractScrollArea::AdjustToContents</enum>
+        </property>
+        <property name="sortingEnabled">
+         <bool>true</bool>
+        </property>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <column>
+         <property name="text">
+          <string>Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>UUID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Model</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Address</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Destinations</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Backups</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_3">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>

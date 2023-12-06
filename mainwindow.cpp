@@ -1,5 +1,7 @@
 #include <algorithm> // std::find_if_not
+#include <iterator> // for std::prev
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <vector>
@@ -71,6 +73,9 @@ constexpr auto tmutilStatusVerb     = "status";
 
 constexpr auto pathInfoUpdateTime = 10000;
 
+constexpr auto itemFlags =
+    Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
+
 enum FileColumn {
     filenameCol,
     backupsCountCol,
@@ -85,6 +90,26 @@ constexpr auto enabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 0, 0);}";
 constexpr auto disabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 100, 100);}";
+
+template <class T>
+concept SortingEnablable = requires(T *a)
+{
+    a->setSortingEnabled(false);
+};
+
+template <SortingEnablable T>
+struct SortingDisabler {
+    T *sortable;
+
+    SortingDisabler(T *s): sortable{s} {
+        this->sortable->setSortingEnabled(false);
+    }
+
+    ~SortingDisabler()
+    {
+        this->sortable->setSortingEnabled(true);
+    }
+};
 
 auto toLongLong(const std::optional<QByteArray>& value)
     -> std::optional<std::int64_t>
@@ -186,7 +211,7 @@ auto findTopLevelItem(const QTreeWidget& tree, const QString& key)
 
 auto findAddableTopLevelItems(
     const QTreeWidget& tree,
-    const std::vector<std::string>& names) -> std::set<QString>
+    const auto& names) -> std::set<QString>
 {
     auto result = std::set<QString>{};
     for (const auto& name: names) {
@@ -201,7 +226,7 @@ auto findAddableTopLevelItems(
 
 auto findDeletableTopLevelItems(
     const QTreeWidget& tree,
-    const std::vector<std::string>& names) -> std::set<QString>
+    const auto& names) -> std::set<QString>
 {
     auto result = std::set<QString>{};
     const auto count = tree.topLevelItemCount();
@@ -263,6 +288,20 @@ auto findItem(QTreeWidget& tree,
     return nullptr;
 }
 
+auto findRow(QTableWidget& table,
+             const QString& text,
+             int col) -> int
+{
+    const auto count = table.rowCount();
+    for (auto row = 0; row < count; ++row) {
+        const auto item = table.item(row, col);
+        if (item && item->text() == text) {
+            return row;
+        }
+    }
+    return -1;
+}
+
 auto findChild(QTreeWidgetItem *parent,
                const std::filesystem::path& path)
     -> std::pair<QTreeWidgetItem*, int>
@@ -304,6 +343,51 @@ void remove(std::set<QTreeWidgetItem*>& items, QTreeWidgetItem* item)
     }
 }
 
+auto durationString(const QMap<QString, QByteArray>& attrs)
+    -> QString
+{
+    const auto begDate = get(attrs, snapshotStartAttr);
+    // Note: snapshotFinishAttr attribute appears to be removed
+    //   from backup directories by "tmutil delete -p <dir>".
+    const auto endDate = get(attrs, snapshotFinishAttr);
+    if (begDate && endDate) {
+        auto begOkay = false;
+        auto endOkay = false;
+        const auto begMicroSecs =
+            QString(*begDate).toLongLong(&begOkay);
+        const auto endMicroSecs =
+            QString(*endDate).toLongLong(&endOkay);
+        if (begOkay && endOkay) {
+            const auto elapsedMicroSecs =
+                endMicroSecs - begMicroSecs;
+            constexpr auto oneMillion = 1000000;
+            const auto elapsedSecs =
+                (elapsedMicroSecs + (oneMillion/2)) / oneMillion;
+            const auto seconds = elapsedSecs % 60;
+            const auto minutes = (elapsedSecs / 60) % 60;
+            const auto hours = (elapsedSecs / 60 / 60);
+            constexpr auto base = 10;
+            constexpr auto fillChar = QChar('0');
+            return QString("%1:%2:%3")
+                .arg(hours, 1, base, fillChar)
+                .arg(minutes, 2, base, fillChar)
+                .arg(seconds, 2, base, fillChar);
+        }
+    }
+    return {};
+}
+
+auto concatenate(const std::filesystem::path::iterator& first,
+                 const std::filesystem::path::iterator& last)
+    -> std::filesystem::path
+{
+    auto result = std::filesystem::path{};
+    for (auto it = first; it != last; ++it) {
+        result /= *it;
+    }
+    return result;
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -329,8 +413,8 @@ MainWindow::MainWindow(QWidget *parent):
     this->tmutilPath = Settings::tmutilPath();
     this->sudoPath = Settings::sudoPath();
 
-    this->ui->destinationsWidget->setTmutilPath(this->tmutilPath);
-    this->ui->destinationsWidget->horizontalHeader()
+    this->ui->destinationsTable->setTmutilPath(this->tmutilPath);
+    this->ui->destinationsTable->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
 
     connect(this->ui->actionAbout, &QAction::triggered,
@@ -346,14 +430,14 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedPaths);
 
-    connect(this->ui->destinationsWidget,
+    connect(this->ui->destinationsTable,
             &DestinationsWidget::failedToStartQuery,
             this, &MainWindow::handleQueryFailedToStart);
-    connect(this->ui->destinationsWidget, &DestinationsWidget::gotPaths,
+    connect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
             this, &MainWindow::updateMountPointsView);
-    connect(this->ui->destinationsWidget, &DestinationsWidget::gotError,
+    connect(this->ui->destinationsTable, &DestinationsWidget::gotError,
             this, &MainWindow::showStatus);
-    connect(this->ui->destinationsWidget, &DestinationsWidget::gotDestinations,
+    connect(this->ui->destinationsTable, &DestinationsWidget::gotDestinations,
             this, &MainWindow::handleGotDestinations);
 
     connect(this->ui->mountPointsWidget, &QTreeWidget::itemSelectionChanged,
@@ -364,7 +448,7 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::mountPointItemCollapsed);
 
     connect(this->destinationsTimer, &QTimer::timeout,
-            this->ui->destinationsWidget,
+            this->ui->destinationsTable,
             &DestinationsWidget::queryDestinations);
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
@@ -373,7 +457,7 @@ MainWindow::MainWindow(QWidget *parent):
 
     QTimer::singleShot(0, this, &MainWindow::readSettings);
     QTimer::singleShot(0,
-                       this->ui->destinationsWidget,
+                       this->ui->destinationsTable,
                        &DestinationsWidget::queryDestinations);
     QTimer::singleShot(0, this, &MainWindow::checkTmStatus);
 }
@@ -383,8 +467,11 @@ MainWindow::~MainWindow()
     delete this->ui;
 }
 
-void MainWindow::updateMountPointsView(const std::vector<std::string>& paths)
+void MainWindow::updateMountPointsView(
+    const std::map<std::string, plist_dict>& mountPoints)
 {
+    this->mountMap = mountPoints;
+    const auto paths = std::views::keys(mountPoints);
     {
         const auto pathsDel = findDeletableTopLevelItems(
             *(this->ui->mountPointsWidget), paths);
@@ -464,8 +551,14 @@ void MainWindow::reportDir(const std::filesystem::path& dir,
         const auto backupsCount = parent->text(backupsCountCol);
         if (!backupsCount.isEmpty()) {
             auto ok = false;
-            parent->setText(backupsCountCol,
-                            QString::number(backupsCount.toLongLong(&ok) - deletedCount));
+            const auto text = QString::number(backupsCount.toLongLong(&ok) - deletedCount);
+            parent->setText(backupsCountCol, text);
+            const auto r = findRow(*this->ui->machinesTable,
+                                   parent->text(filenameCol),
+                                   filenameCol);
+            if (const auto machineItem = this->ui->machinesTable->item(r, 5)) {
+                machineItem->setText(text);
+            }
         }
         return;
     }
@@ -510,11 +603,16 @@ void MainWindow::updateDirEntry(
         return;
     }
 
+    const auto timeMachineMeta = get(attrs, timeMachineMetaAttr);
     const auto machineUuid = get(attrs, machineUuidAttr);
+    const auto machineAddr = get(attrs, machineMacAddrAttr);
+    const auto machineModel = get(attrs, machineModelAttr);
+    const auto machineName = get(attrs, machineCompNameAttr);
     const auto snapshotType = get(attrs, snapshotTypeAttr);
     const auto totalCopied = get(attrs, totalBytesCopiedAttr);
     const auto fileSystemType = get(attrs, fileSystemTypeAttr);
     const auto volumeBytesUsed = get(attrs, volumeBytesUsedAttr);
+
     const auto pathInfo = PathInfo{status, attrs};
     const auto res = this->pathInfoMap.emplace(path, pathInfo);
     const auto parent = ::findItem(*(this->ui->mountPointsWidget),
@@ -523,12 +621,13 @@ void MainWindow::updateDirEntry(
         qDebug() << "MainWindow::updateDirEntry parent not found";
         return;
     }
+    const auto filename = path.filename().string();
     auto item = static_cast<QTreeWidgetItem*>(nullptr);
     if (res.second) {
         item = new QTreeWidgetItem;
         item->setTextAlignment(filenameCol, Qt::AlignLeft|Qt::AlignVCenter);
         item->setFont(filenameCol, this->fixedFont);
-        item->setText(filenameCol, QString::fromStdString(path.filename().string()));
+        item->setText(filenameCol, QString::fromStdString(filename));
         item->setData(filenameCol, Qt::ItemDataRole::UserRole, QString(path.c_str()));
         item->setToolTip(filenameCol, pathTooltip(attrs));
         item->setTextAlignment(backupsCountCol, Qt::AlignRight);
@@ -545,9 +644,15 @@ void MainWindow::updateDirEntry(
         parent->addChild(item);
         if (snapshotType || totalCopied) {
             auto ok = false;
-            const auto t = parent->text(backupsCountCol);
-            parent->setText(backupsCountCol,
-                            QString::number(t.toLongLong(&ok) + 1));
+            const auto n = parent->text(backupsCountCol).toLongLong(&ok);
+            const auto text = QString::number(n + 1);
+            parent->setText(backupsCountCol, text);
+            const auto r = findRow(*this->ui->machinesTable,
+                                   parent->text(filenameCol),
+                                   filenameCol);
+            if (const auto machineItem = this->ui->machinesTable->item(r, 5)) {
+                machineItem->setText(text);
+            }
         }
     }
     else {
@@ -560,36 +665,16 @@ void MainWindow::updateDirEntry(
         }
     }
 
+    if (machineUuid || machineAddr || machineModel || machineName) {
+        auto end = path.end(); --end; --end;
+        const auto mp = concatenate(path.begin(), end);
+        const auto it = this->mountMap.find(mp.string());
+        this->updateMachine(filename, attrs,
+                            ((it != this->mountMap.end())? it->second: plist_dict{}));
+    }
+
     item->setText(snapshotTypeCol, QString{snapshotType.value_or(QByteArray{})});
-
-    const auto begDate = get(attrs, snapshotStartAttr);
-    // Note: snapshotFinishAttr attribute appears to be removed
-    //   from backup directories by "tmutil delete -p <dir>".
-    const auto endDate = get(attrs, snapshotFinishAttr);
-    if (begDate && endDate) {
-        auto begOkay = false;
-        auto endOkay = false;
-        const auto begMicroSecs = QString(*begDate).toLongLong(&begOkay);
-        const auto endMicroSecs = QString(*endDate).toLongLong(&endOkay);
-        if (begOkay && endOkay) {
-            const auto elapsedMicroSecs = endMicroSecs - begMicroSecs;
-            constexpr auto oneMillion = 1000000;
-            const auto elapsedSecs =
-                (elapsedMicroSecs + (oneMillion/2)) / oneMillion;
-            const auto seconds = elapsedSecs % 60;
-            const auto minutes = (elapsedSecs / 60) % 60;
-            const auto hours = (elapsedSecs / 60 / 60);
-            const auto timeString = QString("%1:%2:%3")
-                                        .arg(hours, 1, 10, QChar('0'))
-                                        .arg(minutes, 2, 10, QChar('0'))
-                                        .arg(seconds, 2, 10, QChar('0'));
-            item->setText(durationCol, timeString);
-        }
-    }
-    else {
-        item->setText(durationCol, QString{});
-    }
-
+    item->setText(durationCol, durationString(attrs));
     item->setText(totalCopiedCol, toMegaBytes(toLongLong(totalCopied)));
     item->setText(filesysTypeCol, QString{fileSystemType.value_or(QByteArray{})});
     item->setText(volBytesUseCol, QString(volumeBytesUsed.value_or(QByteArray{})));
@@ -598,6 +683,88 @@ void MainWindow::updateDirEntry(
     // https://stackoverflow.com/q/30088705/7410358
     // https://bugreports.qt.io/browse/QTBUG-28312
     item->setChildIndicatorPolicy(toIndicatorPolicy(status.type()));
+
+    if (!item->isExpanded() &&
+        timeMachineMeta &&
+        timeMachineMeta->startsWith("SnapshotStorage")) {
+        this->updatePathInfo(item);
+    }
+}
+
+void MainWindow::updateMachine(const std::string& name,
+                               const QMap<QString, QByteArray>& attrs,
+                               const plist_dict &dict)
+{
+    const auto machineUuid = get(attrs, machineUuidAttr);
+    const auto machineAddr = get(attrs, machineMacAddrAttr);
+    const auto machineModel = get(attrs, machineModelAttr);
+    const auto machineName = get(attrs, machineCompNameAttr);
+    const auto destinationID = get<plist_string>(dict, plist_string{"ID"});
+
+    const SortingDisabler disableSort{this->ui->machinesTable};
+    const auto res = this->machineMap.emplace(
+        machineUuid.value_or(QByteArray::fromStdString(name)),
+        MachineInfo{});
+    res.first->second.destinations.insert(QString::fromStdString(destinationID.value_or("")));
+    res.first->second.attributes.insert(attrs);
+    if (res.second) {
+        const auto font =
+            QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        const auto row = this->ui->machinesTable->rowCount();
+        this->ui->machinesTable->setRowCount(row + 1);
+        auto col = 0;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setText(QString::fromStdString(name));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+        ++col;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFont(font);
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setText(machineUuid.value_or(QByteArray{}));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+        ++col;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setText(machineModel.value_or(QByteArray{}));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+        ++col;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFont(font);
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setText(machineAddr.value_or(QByteArray{}));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+        ++col;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFont(font);
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignCenter);
+            item->setText(QString::fromStdString(destinationID.value_or("")));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+        ++col;
+        {
+            const auto item = new QTableWidgetItem;
+            item->setFont(font);
+            item->setFlags(itemFlags);
+            item->setTextAlignment(Qt::AlignRight|Qt::AlignVCenter);
+            item->setText(QString::number(0));
+            this->ui->machinesTable->setItem(row, col, item);
+        }
+    }
 }
 
 void MainWindow::updatePathInfo(QTreeWidgetItem *item)
@@ -620,10 +787,7 @@ void MainWindow::updatePathInfos()
 {
     const auto count = this->ui->mountPointsWidget->topLevelItemCount();
     for (auto i = 0; i < count; ++i) {
-        const auto item = this->ui->mountPointsWidget->topLevelItem(i);
-        if (item->isExpanded()) {
-            updatePathInfo(item);
-        }
+        updatePathInfo(this->ui->mountPointsWidget->topLevelItem(i));
     }
 }
 
@@ -828,7 +992,7 @@ void MainWindow::checkTmStatus()
     // need to call "tmutil status -X"
     auto *process = new PlistProcess{this};
     connect(process, &PlistProcess::gotPlist,
-            this->ui->destinationsWidget, &DestinationsWidget::handleStatus);
+            this->ui->destinationsTable, &DestinationsWidget::handleStatus);
     connect(process, &PlistProcess::gotNoPlist,
             this, &MainWindow::handleTmStatusNoPlist);
     connect(process, &PlistProcess::gotReaderError,
@@ -851,10 +1015,10 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     qDebug() << "MainWindow::handleQueryFailedToStart called:"
              << text;
     disconnect(this->destinationsTimer, &QTimer::timeout,
-               this->ui->destinationsWidget,
+               this->ui->destinationsTable,
                &DestinationsWidget::queryDestinations);
     constexpr auto queryFailedMsg = "Unable to start destinations query";
-    const auto tmutilPath = this->ui->destinationsWidget->tmutilPath();
+    const auto tmutilPath = this->ui->destinationsTable->tmutilPath();
     const auto info = QFileInfo(tmutilPath);
     QMessageBox msgBox;
     msgBox.setStandardButtons(QMessageBox::Open);
@@ -891,7 +1055,7 @@ void MainWindow::handleGotDestinations(int count)
 {
     if (count == 0) {
         this->ui->destinationInfoLabel->setText(
-            tr("Destination Info - no destinations appear setup!"));
+            tr("Destinations - none appear setup!"));
         errorMessage.showMessage(
             QString("%1 %2")
                 .arg("No destinations appear setup.",
@@ -899,7 +1063,7 @@ void MainWindow::handleGotDestinations(int count)
     }
     else {
         this->ui->destinationInfoLabel->setText(
-            tr("Destination Info"));
+            tr("Destinations"));
     }
 }
 
@@ -911,16 +1075,16 @@ void MainWindow::handleTmutilPathChange(const QString &path)
     disconnect(this->statusTimer, &QTimer::timeout,
                this, &MainWindow::checkTmStatus);
     disconnect(this->destinationsTimer, &QTimer::timeout,
-               this->ui->destinationsWidget,
+               this->ui->destinationsTable,
                &DestinationsWidget::queryDestinations);
 
     this->tmutilPath = path;
-    this->ui->destinationsWidget->setTmutilPath(path);
+    this->ui->destinationsTable->setTmutilPath(path);
 
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
     connect(this->destinationsTimer, &QTimer::timeout,
-            this->ui->destinationsWidget,
+            this->ui->destinationsTable,
             &DestinationsWidget::queryDestinations);
 }
 
