@@ -94,6 +94,11 @@ private:
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);
+    void updateStorageDir();
+    void updateMachineDir(const std::filesystem::path& dir,
+                          const QSet<QString>& filenames);
+    void updateVolumeDir(const std::filesystem::path& dir,
+                         const QSet<QString>& filenames);
 
     QErrorMessage errorMessage;
     Ui::MainWindow *ui{};
