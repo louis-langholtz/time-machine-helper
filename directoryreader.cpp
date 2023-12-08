@@ -95,6 +95,65 @@ auto getAttributes(const std::filesystem::path &path,
     return {attrs};
 }
 
+auto okay(QDir::Filters filters,
+          const std::filesystem::perms& perms)
+    -> bool
+{
+    using std::filesystem::perms::none;
+    using std::filesystem::perms::owner_read;
+    using std::filesystem::perms::owner_write;
+    using std::filesystem::perms::owner_exec;
+    const auto mask = ((filters & QDir::Readable)? owner_read: none)|
+                      ((filters & QDir::Writable)? owner_write: none)|
+                      ((filters & QDir::Executable)? owner_exec: none);
+    return (perms & mask) == mask;
+}
+
+auto okay(QDir::Filters filters,
+          const std::filesystem::file_status& status)
+    -> bool
+{
+    switch (status.type()) {
+    case std::filesystem::file_type::regular:
+        return (filters & QDir::Files) &&
+               okay(filters, status.permissions());
+    case std::filesystem::file_type::directory:
+        return (filters & QDir::Dirs) &&
+               okay(filters, status.permissions());
+    case std::filesystem::file_type::symlink:
+        return !(filters & QDir::NoSymLinks);
+    case std::filesystem::file_type::block:
+    case std::filesystem::file_type::character:
+    case std::filesystem::file_type::fifo:
+    case std::filesystem::file_type::socket:
+        return filters & QDir::System;
+    case std::filesystem::file_type::none:
+    case std::filesystem::file_type::not_found:
+    case std::filesystem::file_type::unknown:
+        break;
+    }
+    return false;
+}
+
+auto okay(QDir::Filters filters,
+          const std::string& name)
+    -> bool
+{
+    if (!name.starts_with(".")) {
+        return true;
+    }
+    if (!(filters & QDir::Hidden)) {
+        return false;
+    }
+    if (name == "." && (filters & QDir::NoDot)) {
+        return false;
+    }
+    if (name == ".." && (filters & QDir::NoDotDot)) {
+        return false;
+    }
+    return true;
+}
+
 }
 
 DirectoryReader::DirectoryReader(std::filesystem::path dir,
@@ -151,18 +210,12 @@ void DirectoryReader::run() {
         }
         const auto& path = dirEntryIter.path();
         const auto filename = path.filename().string();
-        if (filename.starts_with(".")) {
-            if (!(this->filters & QDir::Hidden)) {
-                continue;
-            }
-            if (filename == "." && (this->filters & QDir::NoDot)) {
-                continue;
-            }
-            if (filename == ".." && (this->filters & QDir::NoDotDot)) {
-                continue;
-            }
+        if (!okay(this->filters, filename)) {
+            continue;
         }
-        const auto status = dirEntryIter.status(ec);
+        const auto status = (this->filters & QDir::NoSymLinks)
+                                ? dirEntryIter.status(ec)
+                                : dirEntryIter.symlink_status(ec);
         if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
             continue;
         }
@@ -177,6 +230,9 @@ void DirectoryReader::run() {
         }
         const auto xattrMap = getAttributes(path, xattrNames);
         if (!xattrMap) {
+            continue;
+        }
+        if (!okay(this->filters, status)) {
             continue;
         }
         emit entry(path, status, *xattrMap);

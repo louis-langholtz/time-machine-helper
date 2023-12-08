@@ -40,7 +40,7 @@ private:
     void run() override;
 
     std::filesystem::path directory;
-    QDir::Filters filters{QDir::AllEntries};
+    QDir::Filters filters{QDir::Dirs|QDir::NoSymLinks};
 };
 
 #endif // DIRECTORYREADER_H
