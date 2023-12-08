@@ -214,8 +214,8 @@ void DirectoryReader::run() {
             continue;
         }
         const auto status = (this->filters & QDir::NoSymLinks)
-                                ? dirEntryIter.status(ec)
-                                : dirEntryIter.symlink_status(ec);
+                                ? dirEntryIter.symlink_status(ec)
+                                : dirEntryIter.status(ec);
         if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
             continue;
         }
