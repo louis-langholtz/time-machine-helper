@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include <QByteArray>
+#include <QDir>
 #include <QMap>
 #include <QPair>
 #include <QSet>
@@ -23,6 +24,10 @@ public:
                     QObject *parent = nullptr);
     ~DirectoryReader() override;
 
+    [[nodiscard]] auto filter() const noexcept
+        -> QDir::Filters;
+    void setFilter(QDir::Filters filters);
+
 signals:
     void entry(const std::filesystem::path& path,
                const std::filesystem::file_status& status,
@@ -35,6 +40,7 @@ private:
     void run() override;
 
     std::filesystem::path directory;
+    QDir::Filters filters{QDir::AllEntries};
 };
 
 #endif // DIRECTORYREADER_H

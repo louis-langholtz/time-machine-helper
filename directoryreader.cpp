@@ -121,6 +121,17 @@ DirectoryReader::~DirectoryReader()
     this->wait();
 }
 
+auto DirectoryReader::filter() const noexcept
+    -> QDir::Filters
+{
+    return this->filters;
+}
+
+void DirectoryReader::setFilter(QDir::Filters filters)
+{
+    this->filters = filters;
+}
+
 void DirectoryReader::run() {
     using std::filesystem::directory_iterator;
     using std::filesystem::directory_options;
@@ -140,8 +151,16 @@ void DirectoryReader::run() {
         }
         const auto& path = dirEntryIter.path();
         const auto filename = path.filename().string();
-        if ((filename == ".") || (filename == "..")) {
-            continue;
+        if (filename.starts_with(".")) {
+            if (!(this->filters & QDir::Hidden)) {
+                continue;
+            }
+            if (filename == "." && (this->filters & QDir::NoDot)) {
+                continue;
+            }
+            if (filename == ".." && (this->filters & QDir::NoDotDot)) {
+                continue;
+            }
         }
         const auto status = dirEntryIter.status(ec);
         if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
@@ -160,8 +179,8 @@ void DirectoryReader::run() {
         if (!xattrMap) {
             continue;
         }
-        filenames.insert(QString::fromStdString(filename));
         emit entry(path, status, *xattrMap);
+        filenames.insert(QString::fromStdString(filename));
     }
     emit ended(this->directory, std::error_code{}, filenames);
 }
