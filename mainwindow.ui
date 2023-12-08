@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>900</width>
-    <height>600</height>
+    <height>747</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -21,7 +21,7 @@
     <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
-       <widget class="QLabel" name="destinationInfoLabel">
+       <widget class="QLabel" name="destinationsLabel">
         <property name="text">
          <string>Destinations</string>
         </property>
@@ -121,7 +121,7 @@
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="machinesLabel">
         <property name="text">
          <string>Machines</string>
         </property>
@@ -153,6 +153,9 @@
          <property name="text">
           <string>UUID</string>
          </property>
+         <property name="toolTip">
+          <string>Universal unique ID.</string>
+         </property>
         </column>
         <column>
          <property name="text">
@@ -163,15 +166,24 @@
          <property name="text">
           <string>Address</string>
          </property>
+         <property name="toolTip">
+          <string>Primary MAC address of machine.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Destinations</string>
          </property>
+         <property name="toolTip">
+          <string>IDs of destinations where backups for the machine can be found.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Backups</string>
+         </property>
+         <property name="toolTip">
+          <string>Number of backups found for the machine.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -187,77 +199,36 @@
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="fileSystemInfoLabel">
+       <widget class="QLabel" name="backupsLabel">
         <property name="toolTip">
          <string>File system info for Time Machine associated paths.</string>
         </property>
         <property name="text">
-         <string>File System Info</string>
+         <string>Backups</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QTreeWidget" name="mountPointsWidget">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>441</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true"/>
-        </property>
-        <property name="indentation">
-         <number>10</number>
-        </property>
-        <property name="sortingEnabled">
+       <widget class="QTableWidget" name="backupsTable">
+        <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
          <bool>true</bool>
-        </property>
-        <attribute name="headerShowSortIndicator" stdset="0">
-         <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
         </attribute>
         <column>
          <property name="text">
-          <string>Path</string>
-         </property>
-         <property name="toolTip">
-          <string>Path from mount point shown in Destination Info.</string>
+          <string>Name</string>
          </property>
         </column>
         <column>
          <property name="text">
-          <string>Backups</string>
-         </property>
-         <property name="toolTip">
-          <string>Count of backups in a &quot;machine directory&quot;.</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Snap Type</string>
-         </property>
-         <property name="toolTip">
-          <string>Snapshot type for &quot;backup&quot; directories.</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
+          <string>Type</string>
          </property>
         </column>
         <column>
          <property name="text">
           <string>Duration</string>
-         </property>
-         <property name="toolTip">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Time elapsed between start &amp;amp; finish of backup in hh:mm:ss format.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -267,8 +238,13 @@
          <property name="text">
           <string>Copied Size</string>
          </property>
-         <property name="toolTip">
-          <string>Amount of data copied in megabytes.</string>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Volumes</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -276,21 +252,12 @@
         </column>
         <column>
          <property name="text">
-          <string>Filesystem Type</string>
-         </property>
-         <property name="toolTip">
-          <string>File system type name.</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignCenter</set>
+          <string>Machine</string>
          </property>
         </column>
         <column>
          <property name="text">
-          <string>Vol. Used</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
+          <string>Destination</string>
          </property>
         </column>
        </widget>
@@ -303,12 +270,89 @@
        </widget>
       </item>
       <item>
+       <widget class="QLabel" name="volumesLabel">
+        <property name="text">
+         <string>Volumes</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="volumesTable">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="sizeAdjustPolicy">
+         <enum>QAbstractScrollArea::AdjustToContents</enum>
+        </property>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <column>
+         <property name="text">
+          <string>Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>UUID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Type</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Max Used</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Machine</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Destination</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Backups</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_4">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QLabel" name="availableActionsLabel">
         <property name="toolTip">
-         <string>Path based actions. Note that these actions are only available when one or more paths are selected.</string>
+         <string>Actions available on selected. Note that these actions are only available when one or more appropriate items are selected.</string>
         </property>
         <property name="text">
-         <string>Path Actions</string>
+         <string>Actions</string>
         </property>
        </widget>
       </item>
@@ -317,7 +361,7 @@
         <item>
          <widget class="QPushButton" name="deletingPushButton">
           <property name="toolTip">
-           <string>Administrative action: deletes selected backups!</string>
+           <string>Administrative action: deletes selected backups.</string>
           </property>
           <property name="text">
            <string>Delete Backups...</string>
@@ -325,22 +369,22 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="uniqueSizePushButton">
+         <widget class="QPushButton" name="verifyingPushButton">
           <property name="toolTip">
-           <string>Unique size of paths within a machine directory.</string>
+           <string>Verifies checksums of selected backups. As admin, will allow verification of otherwise restricted components.</string>
           </property>
           <property name="text">
-           <string>Unique Size...</string>
+           <string>Verify Backups...</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="verifyingPushButton">
+         <widget class="QPushButton" name="uniqueSizePushButton">
           <property name="toolTip">
-           <string>Verifies selected backups.</string>
+           <string>Unique size of paths within a backup volume.</string>
           </property>
           <property name="text">
-           <string>Verify Backups...</string>
+           <string>Unique Size...</string>
           </property>
          </widget>
         </item>

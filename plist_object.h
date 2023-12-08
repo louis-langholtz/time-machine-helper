@@ -61,7 +61,8 @@ struct plist_object {
 };
 
 template <class T>
-auto get(const plist_dict& map, const plist_string& key) -> std::optional<T>
+auto get(const plist_dict& map, const plist_string& key)
+    -> std::optional<T>
 {
     if (const auto it = map.find(key); it != map.end()) {
         if (const auto p = std::get_if<T>(&it->second.value)) {

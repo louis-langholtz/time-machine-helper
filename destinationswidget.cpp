@@ -9,6 +9,7 @@
 #include <QProgressBar>
 
 #include "destinationswidget.h"
+#include "itemdefaults.h"
 #include "plist_object.h"
 #include "plistprocess.h"
 
@@ -55,16 +56,6 @@ constexpr auto itemFlags =
     Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
 
 constexpr auto gigabyte = 1000 * 1000 * 1000;
-
-auto toPlistDictVector(const plist_array& array)
-    -> std::vector<plist_dict>
-{
-    auto result = std::vector<plist_dict>{};
-    for (const auto& element: array) {
-        result.push_back(std::get<plist_dict>(element.value));
-    }
-    return result;
-}
 
 auto decodeBackupPhase(const plist_string &name) -> QString
 {
@@ -199,20 +190,6 @@ void DestinationsWidget::setTmutilPath(const QString& path)
     this->tmuPath = path;
 }
 
-auto DestinationsWidget::createdItem(int row, int column,
-                                     Qt::Alignment textAlign)
-    -> QTableWidgetItem *
-{
-    auto item = this->item(row, column);
-    if (!item) {
-        item = new TableWidgetItem;
-        item->setFlags(itemFlags);
-        item->setTextAlignment(textAlign);
-        this->setItem(row, column, item);
-    }
-    return item;
-}
-
 void DestinationsWidget::queryDestinations()
 {
     auto process = new PlistProcess(this);
@@ -323,35 +300,44 @@ void DestinationsWidget::update(
         return;
     }
     this->setSortingEnabled(false);
+    constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     for (const auto& d: destinations) {
-        {
-            const auto item = this->createdItem(row, 0);
-            const auto v = get<std::string>(d, "Name");
-            item->setText(QString::fromStdString(v.value_or("")));
-            item->setToolTip("Backup disk a.k.a. backup destination.");
-        }
-        const auto id = get<std::string>(d, "ID");
-        {
-            const auto item = this->createdItem(row, 1, Qt::AlignVCenter);
-            item->setText(QString::fromStdString(id.value_or("")));
-            item->setFont(font);
-        }
-        {
-            const auto item = this->createdItem(row, 2);
-            const auto v = get<std::string>(d, "Kind");
-            item->setText(QString::fromStdString(v.value_or("")));
-        }
         const auto mp = get<std::string>(d, "MountPoint");
-        {
-            const auto textAlign = Qt::AlignLeft|Qt::AlignVCenter;
-            const auto item = this->createdItem(row, 3, textAlign);
-            item->setText(QString::fromStdString(mp.value_or("")));
-            item->setFont(font);
-        }
+        const auto id = get<std::string>(d, "ID");
         auto ec = std::error_code{};
         const auto si = mp
                             ? std::filesystem::space(*mp, ec)
                             : std::filesystem::space_info{};
+        auto checked = false;
+        {
+            const auto flags = mp
+                ? Qt::ItemIsUserCheckable|Qt::ItemIsSelectable|Qt::ItemIsEnabled
+                : Qt::ItemIsUserCheckable;
+            const auto defaults =
+                ItemDefaults{}.use(std::optional<bool>{mp && !ec}).use(flags);
+            const auto item = createdItem(this, row, 0, defaults);
+            const auto v = get<std::string>(d, "Name");
+            item->setText(QString::fromStdString(v.value_or("")));
+            item->setToolTip("Backup disk a.k.a. backup destination.");
+            checked = item->checkState() == Qt::CheckState::Checked;
+        }
+        {
+            const auto item = createdItem(this, row, 1);
+            item->setText(QString::fromStdString(id.value_or("")));
+            item->setFont(font);
+        }
+        {
+            const auto item = createdItem(this, row, 2);
+            const auto v = get<std::string>(d, "Kind");
+            item->setText(QString::fromStdString(v.value_or("")));
+        }
+        {
+            constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
+            const auto item = createdItem(this, row, 3,
+                                          ItemDefaults{}.use(align));
+            item->setText(QString::fromStdString(mp.value_or("")));
+            item->setFont(font);
+        }
         {
             const auto used = si.capacity - si.free;
             const auto percentUsage = (si.capacity != 0u)
@@ -372,40 +358,46 @@ void DestinationsWidget::update(
                                    .arg(si.free));
             this->setCellWidget(row, 4, widget);
 
-            const auto textAlign = Qt::AlignRight|Qt::AlignBottom;
+            const auto align = Qt::AlignRight|Qt::AlignBottom;
             const auto text = (mp && !ec)
                                   ? QString("%1%").arg(percentUsage)
                                   : QString{};
-            const auto item = this->createdItem(row, 4, textAlign);
+            const auto item = createdItem(this, row, 4,
+                                          ItemDefaults{}.use(align));
             auto f =
                 QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
             item->setFont(f);
             item->setText(text);
         }
         {
-            const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
-            const auto item = this->createdItem(row, 5, textAlign);
-            const auto text = (mp && !ec)
-                ? QString::number(double(si.capacity) / gigabyte, 'f', 2)
-                : QString{};
-            item->setText(text);
+            const auto item = createdItem(this, row, 5,
+                                          ItemDefaults{}.use(alignRight)
+                                                        .use(font));
+            if (mp && !ec) {
+                item->setData(Qt::EditRole, double(si.capacity) / gigabyte);
+            }
+            else {
+                item->setText(QString{});
+            }
         }
         {
-            const auto textAlign = Qt::AlignRight|Qt::AlignVCenter;
-            const auto item = this->createdItem(row, 6, textAlign);
-            const auto text = (mp && !ec)
-                ? QString::number(double(si.free) / gigabyte, 'f', 2)
-                : QString{};
-            item->setText(text);
+            const auto item = createdItem(this, row, 6,
+                                          ItemDefaults{}.use(alignRight).use(font));
+            if (mp && !ec) {
+                item->setData(Qt::EditRole, double(si.free) / gigabyte);
+            }
+            else {
+                item->setText(QString{});
+            }
         }
         {
             const auto status = this->lastStatus;
             const auto mountPoint = mp.value_or("");
-            const auto item = this->createdItem(row, 7);
+            const auto item = createdItem(this, row, 7);
             item->setText(textForBackupStatus(status, mountPoint));
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
-        if (mp) {
+        if (mp && checked) {
             mountPoints.emplace(*mp, d);
         }
         ++row;

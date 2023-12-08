@@ -19,6 +19,7 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class QXmlStreamReader;
+class QTableWidgetItem;
 class QTreeWidgetItem;
 class QTimer;
 
@@ -45,22 +46,20 @@ public:
     void closeEvent(QCloseEvent *event) override;
 
     void readSettings();
-    void resizeMountPointsColumns();
     void updateMountPointsView(
         const std::map<std::string, plist_dict>& mountPoints);
-    void mountPointItemExpanded(QTreeWidgetItem *item);
-    void mountPointItemCollapsed(QTreeWidgetItem *item);
-    void updatePathInfo(QTreeWidgetItem *item);
-    void updatePathInfos();
-    void deleteSelectedPaths();
+    void updatePathInfo(const std::string& pathName);
+    void deleteSelectedBackups();
     void uniqueSizeSelectedPaths();
     void restoreSelectedPaths();
-    void verifySelectedPaths();
-    void selectedPathsChanged();
+    void verifySelectedBackups();
     void showAboutDialog();
     void showSettingsDialog();
+    void handleDirectoryReaderEnded(
+        const std::filesystem::path& dir,
+        std::error_code ec,
+        const QSet<QString>& filenames);
     void reportDir(const std::filesystem::path& dir,
-                   std::error_code ec,
                    const QSet<QString>& filenames);
     void updateDirEntry(const std::filesystem::path& path,
                         const std::filesystem::file_status& status,
@@ -68,6 +67,10 @@ public:
     void updateMachine(const std::string& name,
                        const QMap<QString, QByteArray>& attrs,
                        const plist_dict& dict);
+    void updateBackups(const std::filesystem::path& path,
+                       const QMap<QString, QByteArray>& attrs);
+    void updateVolumes(const std::filesystem::path& path,
+                       const QMap<QString, QByteArray>& attrs);
     void checkTmStatus();
     void showStatus(const QString& status);
 
@@ -77,6 +80,7 @@ public:
                               const std::filesystem::path& path);
 
 private:
+    void selectedBackupsChanged();
     void handleQueryFailedToStart(const QString &text);
     void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
@@ -86,6 +90,7 @@ private:
                                    int error,
                                    const QString& text);
     void handleTmStatusFinished(int code, int status);
+    void handleMachineItemChanged(QTableWidgetItem *item);
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);

@@ -44,6 +44,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         settingsdialog.h settingsdialog.cpp
         settings.h settings.cpp
         ${app_icon_macos}
+        itemdefaults.h itemdefaults.cpp
+        sortingdisabler.h
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET time-machine-helper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR

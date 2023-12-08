@@ -43,9 +43,6 @@ private:
     void handleQueryFinished(int code, int status);
 
     // Private regular functions...
-    auto createdItem(int row, int column,
-                     Qt::Alignment textAlign = Qt::AlignCenter)
-        -> QTableWidgetItem *;
     void update(const std::vector<plist_dict>& destinations);
     void update(const plist_array &plist);
     void update(const plist_dict &plist);
