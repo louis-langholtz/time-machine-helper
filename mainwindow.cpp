@@ -1,4 +1,5 @@
 #include <algorithm> // std::find_if_not
+#include <chrono>
 #include <optional>
 #include <set>
 #include <string>
@@ -20,6 +21,7 @@
 #include <QFontDatabase>
 #include <QXmlStreamReader>
 #include <QFileDialog>
+#include <QMetaType>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -141,7 +143,7 @@ auto toStringList(const QList<QTableWidgetItem *> &items)
 {
     QStringList result;
     for (const auto* item: items) {
-        const auto string = item->data(Qt::ItemDataRole::UserRole).toString();
+        const auto string = item->data(Qt::UserRole).toString();
         if (!string.isEmpty()) {
             result += string;
         }
@@ -337,7 +339,7 @@ auto findChild(QTreeWidgetItem *parent,
     for (auto i = 0; i < count; ++i) {
         const auto child = parent->child(i);
         const QString pathName =
-            child->data(0, Qt::ItemDataRole::UserRole).toString();
+            child->data(0, Qt::UserRole).toString();
         if (pathName == path.c_str()) {
             return {child, i};
         }
@@ -370,35 +372,23 @@ void remove(std::set<QTreeWidgetItem*>& items, QTreeWidgetItem* item)
     }
 }
 
-auto durationString(const QMap<QString, QByteArray>& attrs)
-    -> QString
+auto duration(const QMap<QString, QByteArray>& attrs)
+    -> std::optional<std::chrono::seconds>
 {
-    const auto begDate = get(attrs, snapshotStartAttr);
+    const auto begData = get(attrs, snapshotStartAttr);
     // Note: snapshotFinishAttr attribute appears to be removed
     //   from backup directories by "tmutil delete -p <dir>".
-    const auto endDate = get(attrs, snapshotFinishAttr);
-    if (begDate && endDate) {
-        auto begOkay = false;
-        auto endOkay = false;
-        const auto begMicroSecs =
-            QString(*begDate).toLongLong(&begOkay);
-        const auto endMicroSecs =
-            QString(*endDate).toLongLong(&endOkay);
-        if (begOkay && endOkay) {
-            const auto elapsedMicroSecs =
-                endMicroSecs - begMicroSecs;
-            constexpr auto oneMillion = 1000000;
-            const auto elapsedSecs =
-                (elapsedMicroSecs + (oneMillion/2)) / oneMillion;
-            const auto seconds = elapsedSecs % 60;
-            const auto minutes = (elapsedSecs / 60) % 60;
-            const auto hours = (elapsedSecs / 60 / 60);
-            constexpr auto base = 10;
-            constexpr auto fillChar = QChar('0');
-            return QString("%1:%2:%3")
-                .arg(hours, 1, base, fillChar)
-                .arg(minutes, 2, base, fillChar)
-                .arg(seconds, 2, base, fillChar);
+    const auto endData = get(attrs, snapshotFinishAttr);
+    if (begData && endData) {
+        using namespace std::chrono_literals;
+        auto begOk = false;
+        auto endOk = false;
+        const auto beg = QString(*begData).toLongLong(&begOk) * 1us;
+        const auto end = QString(*endData).toLongLong(&endOk) * 1us;
+        if (begOk && endOk) {
+            return {
+                std::chrono::duration_cast<std::chrono::seconds>(end - beg)
+            };
         }
     }
     return {};
@@ -689,7 +679,7 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
     if (!item) {
         return;
     }
-    item->setData(Qt::EditRole, filenames.size());
+    item->setData(Qt::DisplayRole, filenames.size());
     item->setToolTip(toStringList(filenames).join(", "));
 }
 
@@ -833,7 +823,7 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Name)) {
         item->setFont(font);
         item->setText(backupName);
-        item->setData(Qt::ItemDataRole::UserRole, QString::fromStdString(path));
+        item->setData(Qt::UserRole, QString::fromStdString(path));
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Type)) {
         item->setText(get(attrs, snapshotTypeAttr).value_or(QByteArray{}));
@@ -841,7 +831,8 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Duration,
                                       ItemDefaults{}.use(alignRight))) {
         item->setFont(font);
-        item->setText(durationString(attrs));
+        const auto time = duration(attrs);
+        item->setData(Qt::DisplayRole, time? QVariant::fromValue(*time): QVariant{});
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Size,
                                       ItemDefaults{}.use(alignRight))) {
@@ -850,7 +841,7 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
         const auto bytesCopied = get(attrs, totalBytesCopiedAttr);
         const auto number =
             QString(bytesCopied.value_or(QByteArray{})).toLongLong(&ok);
-        item->setData(Qt::EditRole, number);
+        item->setData(Qt::DisplayRole, number);
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Volumes,
                                       ItemDefaults{}.use(alignRight))) {
@@ -901,7 +892,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     auto col = 0;
     if (const auto item = createdItem(tbl, row, col)) {
         item->setText(volumeName);
-        item->setData(Qt::ItemDataRole::UserRole, QString::fromStdString(path));
+        item->setData(Qt::UserRole, QString::fromStdString(path));
     }
     ++col;
     if (const auto item = createdItem(tbl, row, col,
@@ -920,7 +911,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         const auto before = text.toLongLong(&ok);
         const auto latest = QString(volumeBytesUsed.value_or("")).toLongLong(&ok);
         const auto used = std::max(before, latest);
-        item->setData(Qt::EditRole, used);
+        item->setData(Qt::DisplayRole, used);
     }
     ++col;
     if (const auto item = createdItem(tbl, row, col)) {
@@ -936,7 +927,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         auto backupSet = item->data(Qt::UserRole).value<QSet<QString>>();
         backupSet.insert(backupName);
         item->setData(Qt::UserRole, QVariant::fromValue(backupSet));
-        item->setData(Qt::EditRole, backupSet.size());
+        item->setData(Qt::DisplayRole, backupSet.size());
     }
     if (foundRow < 0) {
         resizeColumnsToContents(tbl);

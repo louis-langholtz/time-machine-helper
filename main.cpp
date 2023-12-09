@@ -3,6 +3,7 @@
 #include <QApplication>
 
 #include "mainwindow.h"
+#include "seconds.h"
 
 auto main(int argc, char *argv[]) -> int
 {
@@ -16,6 +17,12 @@ auto main(int argc, char *argv[]) -> int
     qRegisterMetaType<std::filesystem::path>();
     qRegisterMetaType<std::filesystem::file_status>();
     qRegisterMetaType<std::error_code>();
+    qRegisterMetaType<std::chrono::seconds>();
+
+    QMetaType::registerConverter<std::chrono::seconds, QString>(
+        [](std::chrono::seconds value) {
+            return toString(value);
+        });
 
     MainWindow w;
     w.show();
