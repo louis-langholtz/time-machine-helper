@@ -110,16 +110,6 @@ enum Enum: int {
 constexpr auto itemFlags =
     Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsUserCheckable;
 
-enum FileColumn {
-    filenameCol,
-    backupsCountCol,
-    snapshotTypeCol,
-    durationCol,
-    totalCopiedCol,
-    filesysTypeCol,
-    volBytesUseCol,
-};
-
 constexpr auto enabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 0, 0);}";
 constexpr auto disabledAdminButtonStyle =
