@@ -22,6 +22,9 @@
 #include <QXmlStreamReader>
 #include <QFileDialog>
 #include <QMetaType>
+#include <QStyledItemDelegate>
+#include <QPainter>
+#include <QMouseEvent>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -58,6 +61,7 @@ constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
 constexpr auto snapshotStartAttr    = "com.apple.backupd.SnapshotStartDate";
 constexpr auto snapshotFinishAttr   = "com.apple.backupd.SnapshotCompletionDate";
 constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
+constexpr auto snapshotVersionAttr  = "com.apple.backup.SnapshotVersion";
 
 // Volume level attributes...
 constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
@@ -94,6 +98,7 @@ namespace BackupsColumn {
 enum Enum: int {
     Name = 0,
     Type,
+    Version,
     Duration,
     Size,
     Volumes,
@@ -413,6 +418,42 @@ void resizeColumnsToContents(QTableWidget* table)
     }
 }
 
+auto removeLast(std::input_iterator auto first,
+                std::input_iterator auto& last)
+{
+    using OT = decltype(*last);
+    if (last == first) {
+        return OT{};
+    }
+    --last;
+    return OT{*last};
+}
+
+auto isStorageDir(const QMap<QString, QByteArray>& attrs)
+    -> bool
+{
+    const auto timeMachineMeta = get(attrs, timeMachineMetaAttr);
+    return timeMachineMeta &&
+           timeMachineMeta->startsWith("SnapshotStorage");
+}
+
+auto isMachineDir(const QMap<QString, QByteArray>& attrs)
+    -> bool
+{
+    const auto machineUuid = get(attrs, machineUuidAttr);
+    const auto machineAddr = get(attrs, machineMacAddrAttr);
+    const auto machineModel = get(attrs, machineModelAttr);
+    const auto machineName = get(attrs, machineCompNameAttr);
+    return machineUuid || machineAddr || machineModel || machineName;
+}
+
+auto isVolumeDir(const QMap<QString, QByteArray>& attrs)
+    -> bool
+{
+    return get(attrs, snapshotTypeAttr) ||
+           get(attrs, totalBytesCopiedAttr);
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -434,6 +475,8 @@ MainWindow::MainWindow(QWidget *parent):
     this->ui->verifyingPushButton->setDisabled(true);
     this->ui->backupsTable->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
+    this->ui->backupsTable->setMouseTracking(true);
+    this->ui->backupsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
 
     this->tmutilPath = Settings::tmutilPath();
     this->sudoPath = Settings::sudoPath();
@@ -552,42 +595,6 @@ void MainWindow::handleDirectoryReaderEnded(
     msgBox.exec();
 }
 
-auto removeLast(std::input_iterator auto first,
-                std::input_iterator auto& last)
-{
-    using OT = decltype(*last);
-    if (last == first) {
-        return OT{};
-    }
-    --last;
-    return OT{*last};
-}
-
-auto isStorageDir(const QMap<QString, QByteArray>& attrs)
-    -> bool
-{
-    const auto timeMachineMeta = get(attrs, timeMachineMetaAttr);
-    return timeMachineMeta &&
-           timeMachineMeta->startsWith("SnapshotStorage");
-}
-
-auto isMachineDir(const QMap<QString, QByteArray>& attrs)
-    -> bool
-{
-    const auto machineUuid = get(attrs, machineUuidAttr);
-    const auto machineAddr = get(attrs, machineMacAddrAttr);
-    const auto machineModel = get(attrs, machineModelAttr);
-    const auto machineName = get(attrs, machineCompNameAttr);
-    return machineUuid || machineAddr || machineModel || machineName;
-}
-
-auto isVolumeDir(const QMap<QString, QByteArray>& attrs)
-    -> bool
-{
-    return get(attrs, snapshotTypeAttr) ||
-           get(attrs, totalBytesCopiedAttr);
-}
-
 void MainWindow::reportDir(
     const std::filesystem::path& dir,
     const QSet<QString>& filenames)
@@ -623,8 +630,8 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
     auto itemsToDelete = std::vector<int>{};
     const auto rows = this->ui->backupsTable->rowCount();
     for (auto row = 0; row < rows; ++row) {
-        const auto nameItem = this->ui->backupsTable->item(row, 0);
-        const auto machineItem = this->ui->backupsTable->item(row, 5);
+        const auto nameItem = this->ui->backupsTable->item(row, BackupsColumn::Name);
+        const auto machineItem = this->ui->backupsTable->item(row, BackupsColumn::Machine);
         if (!filenames.contains(nameItem->text()) && (machineItem->text() == machineIs)) {
             itemsToDelete.push_back(row);
         }
@@ -820,22 +827,29 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
         foundRow = tbl->rowCount();
         tbl->insertRow(foundRow);
     }
-    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Name)) {
+    const auto flags = Qt::ItemIsEnabled|Qt::ItemIsSelectable;
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Name,
+                                      ItemDefaults{}.use(flags))) {
         item->setFont(font);
         item->setText(backupName);
         item->setData(Qt::UserRole, QString::fromStdString(path));
     }
-    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Type)) {
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Type,
+                                      ItemDefaults{}.use(flags))) {
         item->setText(get(attrs, snapshotTypeAttr).value_or(QByteArray{}));
     }
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Version,
+                                      ItemDefaults{}.use(flags))) {
+        item->setText(get(attrs, snapshotVersionAttr).value_or(QByteArray{}));
+    }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Duration,
-                                      ItemDefaults{}.use(alignRight))) {
+                                      ItemDefaults{}.use(flags).use(alignRight))) {
         item->setFont(font);
         const auto time = duration(attrs);
         item->setData(Qt::DisplayRole, time? QVariant::fromValue(*time): QVariant{});
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Size,
-                                      ItemDefaults{}.use(alignRight))) {
+                                      ItemDefaults{}.use(flags).use(alignRight))) {
         item->setFont(font);
         auto ok = false;
         const auto bytesCopied = get(attrs, totalBytesCopiedAttr);
@@ -844,13 +858,15 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
         item->setData(Qt::DisplayRole, number);
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Volumes,
-                                      ItemDefaults{}.use(alignRight))) {
+                                      ItemDefaults{}.use(flags).use(alignRight))) {
         item->setFont(font);
     }
-    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Machine)) {
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Machine,
+                                      ItemDefaults{}.use(flags))) {
         item->setText(machName);
     }
-    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Destination)) {
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Destination,
+                                      ItemDefaults{}.use(flags))) {
         item->setText(destName);
     }
 }
@@ -1078,8 +1094,8 @@ void MainWindow::selectedBackupsChanged()
             : enabledAdminButtonStyle);
     this->ui->deletingPushButton->setEnabled(!empty);
     this->ui->verifyingPushButton->setEnabled(!empty);
-    //this->ui->uniqueSizePushButton->setEnabled(!empty);
-    //this->ui->restoringPushButton->setEnabled(!empty);
+    this->ui->uniqueSizePushButton->setEnabled(!empty);
+    this->ui->restoringPushButton->setEnabled(!empty);
 }
 
 void MainWindow::showAboutDialog()

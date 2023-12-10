@@ -225,10 +225,24 @@
          <property name="text">
           <string>Type</string>
          </property>
+         <property name="toolTip">
+          <string>Backup daemon snapshot type.</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Version</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup snapshot version.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Duration</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup daemon snapshot time elapsed.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -238,6 +252,9 @@
          <property name="text">
           <string>Copied Size</string>
          </property>
+         <property name="toolTip">
+          <string>Backup daemon snapshot total bytes copied.</string>
+         </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
          </property>
@@ -245,6 +262,9 @@
         <column>
          <property name="text">
           <string>Volumes</string>
+         </property>
+         <property name="toolTip">
+          <string>Number of volumes in the backup.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -254,10 +274,16 @@
          <property name="text">
           <string>Machine</string>
          </property>
+         <property name="toolTip">
+          <string>Machine for which the backup was made.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Destination</string>
+         </property>
+         <property name="toolTip">
+          <string>Time machine destination on which the backup is stored.</string>
          </property>
         </column>
        </widget>

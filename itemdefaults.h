@@ -6,9 +6,7 @@
 #include <QTableWidget>
 
 struct ItemDefaults {
-    Qt::ItemFlags flags{Qt::ItemIsSelectable|
-                        Qt::ItemIsEnabled|
-                        Qt::ItemIsUserCheckable};
+    Qt::ItemFlags flags{Qt::ItemIsEnabled};
     Qt::Alignment alignment{Qt::AlignCenter};
     std::optional<QFont> font{};
     std::optional<bool> checked{};
