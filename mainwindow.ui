@@ -114,7 +114,7 @@
        </widget>
       </item>
       <item>
-       <widget class="Line" name="line">
+       <widget class="Line" name="line1">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
@@ -183,6 +183,14 @@
         </column>
         <column>
          <property name="text">
+          <string>Volumes</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
           <string>Backups</string>
          </property>
          <property name="toolTip">
@@ -195,7 +203,90 @@
        </widget>
       </item>
       <item>
-       <widget class="Line" name="line_3">
+       <widget class="Line" name="line2">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="volumesLabel">
+        <property name="text">
+         <string>Volumes</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="volumesTable">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="sizeAdjustPolicy">
+         <enum>QAbstractScrollArea::AdjustToContents</enum>
+        </property>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <column>
+         <property name="text">
+          <string>Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>UUID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Type</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Max Used</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Machines</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Destinations</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Backups</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line3">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
@@ -308,97 +399,14 @@
        </widget>
       </item>
       <item>
-       <widget class="Line" name="line_2">
+       <widget class="Line" name="line4">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="volumesLabel">
-        <property name="text">
-         <string>Volumes</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QTableWidget" name="volumesTable">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="sizeAdjustPolicy">
-         <enum>QAbstractScrollArea::AdjustToContents</enum>
-        </property>
-        <attribute name="verticalHeaderVisible">
-         <bool>false</bool>
-        </attribute>
-        <column>
-         <property name="text">
-          <string>Name</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>UUID</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Type</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Max Used</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Machines</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Destinations</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Backups</string>
-         </property>
-         <property name="textAlignment">
-          <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_4">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="availableActionsLabel">
+       <widget class="QLabel" name="actionsLabel">
         <property name="toolTip">
          <string>Actions available on selected. Note that these actions are only available when one or more appropriate items are selected.</string>
         </property>
@@ -408,7 +416,7 @@
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="availableActionsLayout">
+       <layout class="QHBoxLayout" name="actionsLayout">
         <item>
          <widget class="QPushButton" name="deletingPushButton">
           <property name="toolTip">

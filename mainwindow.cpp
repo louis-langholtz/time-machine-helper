@@ -93,6 +93,7 @@ enum Enum: int {
     Model,
     Address,
     Destinations,
+    Volumes,
     Backups,
 };
 }
@@ -847,6 +848,13 @@ void MainWindow::updateMachine(const std::string& name,
         item->setData(Qt::DisplayRole, set.size());
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Volumes,
+                                      ItemDefaults{opts}.use(font).use(alignRight))) {
+        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+    }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Backups,
                                       ItemDefaults{opts}.use(font).use(alignRight))) {
         const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
@@ -954,6 +962,8 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     const SortingDisabler disableSort{tbl};
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    constexpr auto flags = Qt::ItemFlags{Qt::ItemIsEnabled};
+    constexpr auto checked = std::optional<bool>{true};
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     constexpr auto alignLeft = Qt::AlignLeft|Qt::AlignVCenter;
     const auto foundRow = findRow(*tbl, {{VolumesColumn::Name, volumeName},
@@ -962,7 +972,9 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     if (foundRow < 0) {
         tbl->insertRow(row);
     }
-    if (const auto item = createdItem(tbl, row, VolumesColumn::Name)) {
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Name,
+                                      ItemDefaults{}.use(flags|Qt::ItemIsUserCheckable)
+                                                    .use(checked))) {
         item->setText(volumeName);
         item->setData(Qt::UserRole, QString::fromStdString(path));
     }
@@ -991,6 +1003,22 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         item->setData(Qt::UserRole, QVariant::fromValue(set));
         item->setData(Qt::DisplayRole, set.size());
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+        {
+            const auto machTbl = this->ui->machinesTable;
+            const SortingDisabler disableMachSort{machTbl};
+            const auto mr =
+                findRow(*machTbl, {{MachinesColumn::Name, machName}});
+            if (mr >= 0) {
+                if (const auto item = createdItem(machTbl, mr, MachinesColumn::Volumes,
+                                                  ItemDefaults{}.use(font).use(alignRight))) {
+                    auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                    set.insert(volumeName);
+                    item->setData(Qt::UserRole, QVariant::fromValue(set));
+                    item->setData(Qt::DisplayRole, set.size());
+                    item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+                }
+            }
+        }
     }
     if (const auto item = createdItem(tbl, row, VolumesColumn::Destinations,
                                       ItemDefaults{}.use(font).use(alignRight))) {
@@ -1369,9 +1397,10 @@ void MainWindow::handleMachineItemChanged(QTableWidgetItem *machinesItem)
     }
     auto showSet = QSet<QString>{};
     {
-        const auto count = this->ui->machinesTable->rowCount();
+        const auto tbl = this->ui->machinesTable;
+        const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
-            const auto item = this->ui->machinesTable->item(row, MachinesColumn::Name);
+            const auto item = tbl->item(row, MachinesColumn::Name);
             const auto checkState = item->checkState();
             if (checkState != Qt::CheckState::Unchecked) {
                 showSet.insert(item->text());
@@ -1405,8 +1434,7 @@ void MainWindow::handleMachineItemChanged(QTableWidgetItem *machinesItem)
                 continue;
             }
             const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-            const auto hide = !showSet.intersects(set);
-            tbl->setRowHidden(row, hide);
+            tbl->setRowHidden(row, !showSet.intersects(set));
         }
     }
 }
