@@ -90,8 +90,7 @@ private:
                                    int error,
                                    const QString& text);
     void handleTmStatusFinished(int code, int status);
-    void handleMachineItemChanged(QTableWidgetItem *item);
-    void handleDestinationsItemChanged(QTableWidgetItem *item);
+    void handleItemChanged(QTableWidgetItem *item);
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);

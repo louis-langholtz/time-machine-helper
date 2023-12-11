@@ -538,11 +538,14 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::showStatus);
     connect(this->ui->destinationsTable, &DestinationsWidget::gotDestinations,
             this, &MainWindow::handleGotDestinations);
-    connect(this->ui->destinationsTable, &DestinationsWidget::itemChanged,
-            this, &MainWindow::handleDestinationsItemChanged);
 
+    connect(this->ui->destinationsTable, &DestinationsWidget::itemChanged,
+            this, &MainWindow::handleItemChanged);
     connect(this->ui->machinesTable, &QTableWidget::itemChanged,
-            this, &MainWindow::handleMachineItemChanged);
+            this, &MainWindow::handleItemChanged);
+    connect(this->ui->volumesTable, &QTableWidget::itemChanged,
+            this, &MainWindow::handleItemChanged);
+
     connect(this->ui->backupsTable, &QTableWidget::itemSelectionChanged,
             this, &MainWindow::selectedBackupsChanged);
 
@@ -740,6 +743,7 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
     if (!item) {
         return;
     }
+    item->setData(Qt::UserRole, QVariant::fromValue(filenames));
     item->setData(Qt::DisplayRole, filenames.size());
     item->setToolTip(toStringList(filenames, maxToolTipStringList).join(", "));
 }
@@ -929,6 +933,9 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Volumes,
                                       ItemDefaults{}.use(flags).use(alignRight).use(font))) {
+        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Machine,
                                       ItemDefaults{}.use(flags))) {
@@ -1387,62 +1394,9 @@ void MainWindow::handleTmStatusFinished(int code, int status)
     }
 }
 
-void MainWindow::handleMachineItemChanged(QTableWidgetItem *machinesItem)
+void MainWindow::handleItemChanged(QTableWidgetItem *)
 {
-    if (!machinesItem) {
-        return;
-    }
-    if (machinesItem->column() != MachinesColumn::Name) {
-        return;
-    }
-    auto showSet = QSet<QString>{};
-    {
-        const auto tbl = this->ui->machinesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, MachinesColumn::Name);
-            const auto checkState = item->checkState();
-            if (checkState != Qt::CheckState::Unchecked) {
-                showSet.insert(item->text());
-            }
-        }
-    }
-    const auto checkState = machinesItem->checkState();
-    const auto hide = checkState == Qt::CheckState::Unchecked;
-    const auto machine = machinesItem->text();
-    {
-        const auto tbl = this->ui->backupsTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, BackupsColumn::Machine);
-            if (!item) {
-                continue;
-            }
-            const auto itemMachine = item->text();
-            if (itemMachine != machine) {
-                continue;
-            }
-            tbl->setRowHidden(row, hide);
-        }
-    }
-    {
-        const auto tbl = this->ui->volumesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, VolumesColumn::Machines);
-            if (!item) {
-                continue;
-            }
-            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-            tbl->setRowHidden(row, !showSet.intersects(set));
-        }
-    }
-}
-
-void MainWindow::handleDestinationsItemChanged(
-    QTableWidgetItem *)
-{
-    auto showSet = QSet<QString>{};
+    auto showDests = QSet<QString>{};
     {
         const auto tbl = this->ui->destinationsTable;
         const auto count = tbl->rowCount();
@@ -1453,7 +1407,37 @@ void MainWindow::handleDestinationsItemChanged(
             }
             const auto checkState = item->checkState();
             if (checkState != Qt::CheckState::Unchecked) {
-                showSet.insert(item->text());
+                showDests.insert(item->text());
+            }
+        }
+    }
+    auto showMachs = QSet<QString>{};
+    {
+        const auto tbl = this->ui->machinesTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            auto item = tbl->item(row, MachinesColumn::Name);
+            if (!item) {
+                continue;
+            }
+            const auto checkState = item->checkState();
+            if (checkState != Qt::CheckState::Unchecked) {
+                showMachs.insert(item->text());
+            }
+        }
+    }
+    auto showVols = QSet<QString>{};
+    {
+        const auto tbl = this->ui->volumesTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = tbl->item(row, VolumesColumn::Name);
+            if (!item) {
+                continue;
+            }
+            const auto checkState = item->checkState();
+            if (checkState != Qt::CheckState::Unchecked) {
+                showVols.insert(item->text());
             }
         }
     }
@@ -1461,12 +1445,31 @@ void MainWindow::handleDestinationsItemChanged(
         const auto tbl = this->ui->machinesTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, MachinesColumn::Destinations);
-            if (!item) {
-                continue;
+            auto hide = false;
+            if (const auto item = tbl->item(row, MachinesColumn::Destinations)) {
+                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                hide |= !showDests.intersects(set);
             }
-            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-            const auto hide = !showSet.intersects(set);
+            if (const auto item = tbl->item(row, MachinesColumn::Volumes)) {
+                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                hide |= !showVols.intersects(set);
+            }
+            tbl->setRowHidden(row, hide);
+        }
+    }
+    {
+        const auto tbl = this->ui->volumesTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            auto hide = false;
+            if (const auto item = tbl->item(row, VolumesColumn::Destinations)) {
+                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                hide |= !showDests.intersects(set);
+            }
+            if (const auto item = tbl->item(row, VolumesColumn::Machines)) {
+                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                hide |= !showMachs.intersects(set);
+            }
             tbl->setRowHidden(row, hide);
         }
     }
@@ -1474,24 +1477,18 @@ void MainWindow::handleDestinationsItemChanged(
         const auto tbl = this->ui->backupsTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, BackupsColumn::Destination);
-            if (!item) {
-                continue;
+            auto hide = false;
+            if (const auto item = tbl->item(row, BackupsColumn::Destination)) {
+                hide |= !showDests.contains(item->text());
             }
-            const auto itemDest = item->text();
-            tbl->setRowHidden(row, !showSet.contains(itemDest));
-        }
-    }
-    {
-        const auto tbl = this->ui->volumesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, VolumesColumn::Destinations);
-            if (!item) {
-                continue;
+            if (const auto item = tbl->item(row, BackupsColumn::Machine)) {
+                hide |= !showMachs.contains(item->text());
             }
-            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-            tbl->setRowHidden(row, !showSet.intersects(set));
+            if (const auto item = tbl->item(row, BackupsColumn::Volumes)) {
+                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                hide |= !showVols.intersects(set);
+            }
+            tbl->setRowHidden(row, hide);
         }
     }
 }
