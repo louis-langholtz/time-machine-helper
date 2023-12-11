@@ -63,6 +63,8 @@ constexpr auto snapshotFinishAttr   = "com.apple.backupd.SnapshotCompletionDate"
 constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
 // version 4 appears to add "com.apple.backupd.fstypename" attr to volumes
 constexpr auto snapshotVersionAttr  = "com.apple.backup.SnapshotVersion";
+constexpr auto snapshotStateAttr    = "com.apple.backupd.SnapshotState";
+constexpr auto snapshotNumberAttr   = "com.apple.backup.SnapshotNumber";
 
 // Volume level attributes...
 constexpr auto fileSystemTypeAttr   = "com.apple.backupd.fstypename";
@@ -101,6 +103,8 @@ enum Enum: int {
     Name = 0,
     Type,
     Version,
+    State,
+    Number,
     Duration,
     Size,
     Volumes,
@@ -883,37 +887,40 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     }
     const auto flags = Qt::ItemIsEnabled|Qt::ItemIsSelectable;
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Name,
-                                      ItemDefaults{}.use(flags))) {
-        item->setFont(font);
+                                      ItemDefaults{}.use(flags).use(font))) {
         item->setText(backupName);
         item->setData(Qt::UserRole, QString::fromStdString(path));
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Type,
                                       ItemDefaults{}.use(flags))) {
-        item->setText(get(attrs, snapshotTypeAttr).value_or(QByteArray{}));
+        item->setText(toString(get(attrs, snapshotTypeAttr)).value_or(""));
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Version,
+                                      ItemDefaults{}.use(flags).use(alignRight).use(font))) {
+        const auto num = toLongLong(get(attrs, snapshotVersionAttr));
+        item->setData(Qt::DisplayRole, num? QVariant::fromValue(*num): QVariant{});
+    }
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::State,
                                       ItemDefaults{}.use(flags))) {
-        item->setText(get(attrs, snapshotVersionAttr).value_or(QByteArray{}));
+        item->setText(toString(get(attrs, snapshotStateAttr)).value_or(""));
+    }
+    if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Number,
+                                      ItemDefaults{}.use(flags).use(alignRight).use(font))) {
+        const auto num = toLongLong(get(attrs, snapshotNumberAttr));
+        item->setData(Qt::DisplayRole, num? QVariant::fromValue(*num): QVariant{});
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Duration,
-                                      ItemDefaults{}.use(flags).use(alignRight))) {
-        item->setFont(font);
+                                      ItemDefaults{}.use(flags).use(alignRight).use(font))) {
         const auto time = duration(attrs);
         item->setData(Qt::DisplayRole, time? QVariant::fromValue(*time): QVariant{});
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Size,
-                                      ItemDefaults{}.use(flags).use(alignRight))) {
-        item->setFont(font);
-        auto ok = false;
-        const auto bytesCopied = get(attrs, totalBytesCopiedAttr);
-        const auto number =
-            QString(bytesCopied.value_or(QByteArray{})).toLongLong(&ok);
-        item->setData(Qt::DisplayRole, number);
+                                      ItemDefaults{}.use(flags).use(alignRight).use(font))) {
+        const auto num = toLongLong(get(attrs, totalBytesCopiedAttr));
+        item->setData(Qt::DisplayRole, num? QVariant::fromValue(*num): QVariant{});
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Volumes,
-                                      ItemDefaults{}.use(flags).use(alignRight))) {
-        item->setFont(font);
+                                      ItemDefaults{}.use(flags).use(alignRight).use(font))) {
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Machine,
                                       ItemDefaults{}.use(flags))) {
