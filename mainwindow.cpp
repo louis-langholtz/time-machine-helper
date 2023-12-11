@@ -61,6 +61,7 @@ constexpr auto snapshotTypeAttr     = "com.apple.backupd.SnapshotType";
 constexpr auto snapshotStartAttr    = "com.apple.backupd.SnapshotStartDate";
 constexpr auto snapshotFinishAttr   = "com.apple.backupd.SnapshotCompletionDate";
 constexpr auto totalBytesCopiedAttr = "com.apple.backupd.SnapshotTotalBytesCopied";
+// version 4 appears to add "com.apple.backupd.fstypename" attr to volumes
 constexpr auto snapshotVersionAttr  = "com.apple.backup.SnapshotVersion";
 
 // Volume level attributes...
@@ -80,6 +81,7 @@ constexpr auto tmutilRestoreVerb    = "restore";
 constexpr auto tmutilStatusVerb     = "status";
 
 constexpr auto pathInfoUpdateTime = 10000;
+constexpr auto maxToolTipStringList = 10;
 
 // A namespace scoped enum for the machines table columns...
 namespace MachinesColumn {
@@ -104,6 +106,18 @@ enum Enum: int {
     Volumes,
     Machine,
     Destination,
+};
+}
+
+namespace VolumesColumn {
+enum Enum: int {
+    Name = 0,
+    Uuid,
+    Type,
+    MaxUsed,
+    Machines,
+    Destinations,
+    Backups,
 };
 }
 
@@ -146,12 +160,18 @@ auto toStringList(const QList<QTableWidgetItem *> &items)
     return result;
 }
 
-auto toStringList(const QSet<QString>& filenames)
+auto toStringList(const QSet<QString>& strings,
+                  const int max = -1,
+                  const QString &etc = "...")
     -> QStringList
 {
     QStringList result;
-    for (const auto& filename: filenames) {
-        result << filename;
+    for (const auto& string: strings) {
+        if ((max >= 0) && (max <= result.size())) {
+            result << etc;
+            break;
+        }
+        result << string;
     }
     return result;
 }
@@ -305,7 +325,7 @@ auto findItem(QTreeWidget& tree,
     return nullptr;
 }
 
-auto findRow(QTableWidget& table,
+auto findRow(const QTableWidget& table,
              const std::initializer_list<std::pair<int, QString>>& keys)
     -> int
 {
@@ -444,6 +464,22 @@ auto isVolumeDir(const QMap<QString, QByteArray>& attrs)
            get(attrs, totalBytesCopiedAttr);
 }
 
+auto toString(const std::optional<QByteArray> &data)
+    -> std::optional<QString>
+{
+    if (!data) {
+        return {};
+    }
+    auto first = data->rbegin();
+    const auto last = data->rend();
+    for (; first != last; ++first) {
+        if (*first != 0) {
+            break;
+        }
+    }
+    return {QString::fromUtf8(QByteArrayView{data->data(), &(*first) + 1})};
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -497,6 +533,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::showStatus);
     connect(this->ui->destinationsTable, &DestinationsWidget::gotDestinations,
             this, &MainWindow::handleGotDestinations);
+    connect(this->ui->destinationsTable, &DestinationsWidget::itemChanged,
+            this, &MainWindow::handleDestinationsItemChanged);
 
     connect(this->ui->machinesTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleMachineItemChanged);
@@ -526,12 +564,16 @@ void MainWindow::updateMountPointsView(
 {
     this->mountMap = mountPoints;
     if (mountPoints.empty()) {
+        disconnect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
+                   this, &MainWindow::updateMountPointsView);
         QMessageBox msgBox;
         msgBox.setIcon(QMessageBox::Critical);
         msgBox.setText("No destination accessible!");
         msgBox.setInformativeText(
-            "No backups or restores are currently possible!");
+            "No backups or restores are possible when no destinations are accessible!");
         msgBox.exec();
+        connect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
+                this, &MainWindow::updateMountPointsView);
         return;
     }
     for (const auto& mountPoint: mountPoints) {
@@ -616,41 +658,58 @@ void MainWindow::updateStorageDir()
 void MainWindow::updateMachineDir(const std::filesystem::path& dir,
                                   const QSet<QString>& filenames)
 {
-    const auto machineIs = QString::fromStdString(dir.filename().string());
-    auto itemsToDelete = std::vector<int>{};
+    const auto first = dir.begin();
+    auto last = dir.end();
+    const auto machName = QString::fromStdString(removeLast(first, last));
+    (void)removeLast(first, last);
+    const auto destName = QString::fromStdString(removeLast(first, last));
+
+    auto backupsToDelete = QSet<QString>{};
+    auto rowsToDelete = std::vector<int>{};
     const auto rows = this->ui->backupsTable->rowCount();
     for (auto row = 0; row < rows; ++row) {
         const auto nameItem = this->ui->backupsTable->item(row, BackupsColumn::Name);
         const auto machineItem = this->ui->backupsTable->item(row, BackupsColumn::Machine);
-        if (!filenames.contains(nameItem->text()) && (machineItem->text() == machineIs)) {
-            itemsToDelete.push_back(row);
+        const auto destItem = this->ui->backupsTable->item(row, BackupsColumn::Destination);
+        if (!filenames.contains(nameItem->text()) &&
+            (machineItem->text() == machName) &&
+            (destItem->text() == destName)) {
+            rowsToDelete.push_back(row);
+            backupsToDelete.insert(nameItem->text());
         }
     }
-    for (auto row: itemsToDelete) {
+    for (auto row: rowsToDelete) {
         this->ui->backupsTable->removeRow(row);
     }
-    const auto deletedCount = static_cast<int>(itemsToDelete.size());
+    const auto deletedCount = static_cast<int>(rowsToDelete.size());
     if (deletedCount > 0) {
         qDebug() << "MainWindow::reportDir deleted would be" << deletedCount;
         const auto tbl = this->ui->volumesTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
-            if (const auto item = tbl->item(row, 4)) {
-                if (item->text() != machineIs) {
+            if (const auto item = tbl->item(row, VolumesColumn::Machines)) {
+                if (item->text() != machName) {
                     continue;
                 }
             }
-            if (const auto item = tbl->item(row, 6)) {
+            if (const auto item = tbl->item(row, VolumesColumn::Backups)) {
                 item->setData(Qt::UserRole, QVariant::fromValue(QSet<QString>{}));
             }
         }
     }
     if (const auto foundRow = findRow(*this->ui->machinesTable,
-                                      {{MachinesColumn::Name, machineIs}});
+                                      {{MachinesColumn::Name, machName}});
         foundRow >= 0) {
         if (const auto item = this->ui->machinesTable->item(
                 foundRow, MachinesColumn::Backups)) {
-            item->setText(QString::number(filenames.size()));
+            auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+            set.removeIf([&](const QString& name){
+                return backupsToDelete.contains(name);
+            });
+            set.unite(filenames);
+            item->setData(Qt::UserRole, QVariant::fromValue(set));
+            item->setData(Qt::DisplayRole, set.size());
+            item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
         }
     }
     resizeColumnsToContents(this->ui->backupsTable);
@@ -677,7 +736,7 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
         return;
     }
     item->setData(Qt::DisplayRole, filenames.size());
-    item->setToolTip(toStringList(filenames).join(", "));
+    item->setToolTip(toStringList(filenames, maxToolTipStringList).join(", "));
 }
 
 void MainWindow::updateDirEntry(
@@ -692,9 +751,7 @@ void MainWindow::updateDirEntry(
         res.first->second = pathInfo;
     }
 
-    const auto timeMachineMeta = get(attrs, timeMachineMetaAttr);
-    if (timeMachineMeta &&
-        timeMachineMeta->startsWith("SnapshotStorage")) {
+    if (isStorageDir(attrs)) {
         // This is the "Backups.backupdb" like directory, just go deeper...
         this->updatePathInfo(path);
         return;
@@ -702,11 +759,7 @@ void MainWindow::updateDirEntry(
 
     const auto filename = path.filename().string();
 
-    const auto machineUuid = get(attrs, machineUuidAttr);
-    const auto machineAddr = get(attrs, machineMacAddrAttr);
-    const auto machineModel = get(attrs, machineModelAttr);
-    const auto machineName = get(attrs, machineCompNameAttr);
-    if (machineUuid || machineAddr || machineModel || machineName) {
+    if (isMachineDir(attrs)) {
         auto end = path.end(); --end; --end;
         const auto mp = concatenate(path.begin(), end);
         const auto it = this->mountMap.find(mp.string());
@@ -716,9 +769,7 @@ void MainWindow::updateDirEntry(
         return;
     }
 
-    const auto snapshotType = get(attrs, snapshotTypeAttr);
-    const auto totalCopied = get(attrs, totalBytesCopiedAttr);
-    if (snapshotType || totalCopied) {
+    if (isVolumeDir(attrs)) {
         if (changed) {
             this->updateBackups(path, attrs);
         }
@@ -740,51 +791,64 @@ void MainWindow::updateMachine(const std::string& name,
                                const QMap<QString, QByteArray>& attrs,
                                const plist_dict &dict)
 {
-    const auto machineUuid = get(attrs, machineUuidAttr);
-    const auto machineAddr = get(attrs, machineMacAddrAttr);
-    const auto machineModel = get(attrs, machineModelAttr);
+    const auto machineUuid = toString(get(attrs, machineUuidAttr));
+    const auto machineAddr = toString(get(attrs, machineMacAddrAttr));
+    const auto machineModel = toString(get(attrs, machineModelAttr));
     const auto machineName = get(attrs, machineCompNameAttr);
     const auto destination = get<plist_string>(dict, plist_string{"Name"});
+    const auto destName = QString::fromStdString(destination.value_or(""));
+    const auto machName = QString::fromStdString(name);
+    const auto uuid = machineUuid.value_or(QString{});
 
     const auto tbl = this->ui->machinesTable;
     const SortingDisabler disableSort{tbl};
     const auto res = this->machineMap.emplace(
-        machineUuid.value_or(QByteArray::fromStdString(name)),
+        machineUuid.value_or(machName),
         MachineInfo{});
-    res.first->second.destinations.insert(QString::fromStdString(destination.value_or("")));
+    res.first->second.destinations.insert(destName);
     res.first->second.attributes.insert(attrs);
-    if (res.second) {
-        constexpr auto checked = std::optional<bool>{true};
-        constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
-        const auto flags = Qt::ItemFlags{Qt::ItemIsEnabled};
-        const auto opts = ItemDefaults{}.use(flags);
-        const auto font =
-            QFontDatabase::systemFont(QFontDatabase::FixedFont);
-        const auto row = tbl->rowCount();
-        tbl->setRowCount(row + 1);
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Name,
-                                          ItemDefaults{}.use(flags|Qt::ItemIsUserCheckable)
-                                                        .use(checked))) {
-            item->setText(QString::fromStdString(name));
-        }
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Uuid,
-                                          ItemDefaults{opts}.use(font))) {
-            item->setText(machineUuid.value_or(QByteArray{}));
-        }
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Model, opts)) {
-            item->setText(machineModel.value_or(QByteArray{}));
-        }
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Address,
-                                          ItemDefaults{opts}.use(font))) {
-            item->setText(machineAddr.value_or(QByteArray{}));
-        }
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Destinations, opts)) {
-            item->setText(toStringList(res.first->second.destinations).join(", "));
-        }
-        if (const auto item = createdItem(tbl, row, MachinesColumn::Backups,
-                                          ItemDefaults{opts}.use(font).use(alignRight))) {
-            item->setText(QString::number(0));
-        }
+    const auto foundRow = findRow(*tbl, {{MachinesColumn::Name, machName},
+                                         {MachinesColumn::Uuid, uuid}});
+    const auto row = (foundRow < 0)? tbl->rowCount(): foundRow;
+    if (foundRow < 0) {
+        tbl->insertRow(row);
+    }
+    constexpr auto checked = std::optional<bool>{true};
+    constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
+    const auto flags = Qt::ItemFlags{Qt::ItemIsEnabled};
+    const auto opts = ItemDefaults{}.use(flags);
+    const auto font =
+        QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Name,
+                                      ItemDefaults{}.use(flags|Qt::ItemIsUserCheckable)
+                                          .use(checked))) {
+        item->setText(machName);
+    }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Uuid,
+                                      ItemDefaults{opts}.use(font))) {
+        item->setText(uuid);
+    }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Model, opts)) {
+        item->setText(machineModel.value_or(QString{}));
+    }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Address,
+                                      ItemDefaults{opts}.use(font))) {
+        item->setText(machineAddr.value_or(QString{}));
+    }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Destinations,
+                                      ItemDefaults{opts}.use(font).use(alignRight))) {
+        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        set.insert(destName);
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+    }
+    if (const auto item = createdItem(tbl, row, MachinesColumn::Backups,
+                                      ItemDefaults{opts}.use(font).use(alignRight))) {
+        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
 }
 
@@ -864,9 +928,9 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
 void MainWindow::updateVolumes(const std::filesystem::path& path,
                                const QMap<QString, QByteArray>& attrs)
 {
-    const auto fileSystemType = get(attrs, fileSystemTypeAttr);
+    const auto fsType = toString(get(attrs, fileSystemTypeAttr)).value_or("");
     const auto volumeBytesUsed = get(attrs, volumeBytesUsedAttr);
-    const auto volumeUuid = get(attrs, volumeUuidAttr);
+    const auto volumeUuid = toString(get(attrs, volumeUuidAttr)).value_or("");
     const auto first = path.begin();
     auto last = path.end();
     const auto volumeName = QString::fromStdString(removeLast(first, last));
@@ -879,38 +943,32 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         qWarning() << "MainWindow::updateVolumes empty name?";
         return;
     }
-    if (backupName == "Latest") {
-
-    }
     const auto tbl = this->ui->volumesTable;
     const SortingDisabler disableSort{tbl};
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     constexpr auto alignLeft = Qt::AlignLeft|Qt::AlignVCenter;
-    const auto foundRow = findRow(*tbl, {{0, volumeName},
-                                         {4, machName},
-                                         {5, destName}});
+    const auto foundRow = findRow(*tbl, {{VolumesColumn::Name, volumeName},
+                                         {VolumesColumn::Uuid, volumeUuid}});
     const auto row = (foundRow < 0)? tbl->rowCount(): foundRow;
     if (foundRow < 0) {
         tbl->insertRow(row);
     }
-    auto col = 0;
-    if (const auto item = createdItem(tbl, row, col)) {
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Name)) {
         item->setText(volumeName);
         item->setData(Qt::UserRole, QString::fromStdString(path));
     }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col,
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Uuid,
                                       ItemDefaults{}.use(font))) {
-        item->setText(volumeUuid.value_or(""));
+        item->setText(volumeUuid);
     }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col)) {
-        item->setText(fileSystemType.value_or(""));
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Type)) {
+        if (!fsType.isEmpty()) { // older backups don't store type attr
+            item->setText(fsType);
+        }
     }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col,
+    if (const auto item = createdItem(tbl, row, VolumesColumn::MaxUsed,
                                       ItemDefaults{}.use(font).use(alignRight))) {
         const auto text = item->text();
         auto ok = false;
@@ -919,21 +977,29 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         const auto used = std::max(before, latest);
         item->setData(Qt::DisplayRole, used);
     }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col)) {
-        item->setText(machName);
-    }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col)) {
-        item->setText(destName);
-    }
-    ++col;
-    if (const auto item = createdItem(tbl, row, col,
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Machines,
                                       ItemDefaults{}.use(font).use(alignRight))) {
-        auto backupSet = item->data(Qt::UserRole).value<QSet<QString>>();
-        backupSet.insert(backupName);
-        item->setData(Qt::UserRole, QVariant::fromValue(backupSet));
-        item->setData(Qt::DisplayRole, backupSet.size());
+        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        set.insert(machName);
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+    }
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Destinations,
+                                      ItemDefaults{}.use(font).use(alignRight))) {
+        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        set.insert(destName);
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+    }
+    if (const auto item = createdItem(tbl, row, VolumesColumn::Backups,
+                                      ItemDefaults{}.use(font).use(alignRight))) {
+        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        set.insert(backupName);
+        item->setData(Qt::UserRole, QVariant::fromValue(set));
+        item->setData(Qt::DisplayRole, set.size());
+        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
     if (foundRow < 0) {
         resizeColumnsToContents(tbl);
@@ -1291,8 +1357,19 @@ void MainWindow::handleMachineItemChanged(QTableWidgetItem *machinesItem)
     if (!machinesItem) {
         return;
     }
-    if (machinesItem->column() != 0) {
+    if (machinesItem->column() != MachinesColumn::Name) {
         return;
+    }
+    auto showSet = QSet<QString>{};
+    {
+        const auto count = this->ui->machinesTable->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = this->ui->machinesTable->item(row, MachinesColumn::Name);
+            const auto checkState = item->checkState();
+            if (checkState != Qt::CheckState::Unchecked) {
+                showSet.insert(item->text());
+            }
+        }
     }
     const auto checkState = machinesItem->checkState();
     const auto hide = checkState == Qt::CheckState::Unchecked;
@@ -1316,15 +1393,70 @@ void MainWindow::handleMachineItemChanged(QTableWidgetItem *machinesItem)
         const auto tbl = this->ui->volumesTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, 4);
+            const auto item = tbl->item(row, VolumesColumn::Machines);
             if (!item) {
                 continue;
             }
-            const auto itemMachine = item->text();
-            if (itemMachine != machine) {
+            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+            const auto hide = !showSet.intersects(set);
+            tbl->setRowHidden(row, hide);
+        }
+    }
+}
+
+void MainWindow::handleDestinationsItemChanged(
+    QTableWidgetItem *)
+{
+    auto showSet = QSet<QString>{};
+    {
+        const auto tbl = this->ui->destinationsTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = tbl->item(row, 0);
+            if (!item) {
                 continue;
             }
+            const auto checkState = item->checkState();
+            if (checkState != Qt::CheckState::Unchecked) {
+                showSet.insert(item->text());
+            }
+        }
+    }
+    {
+        const auto tbl = this->ui->machinesTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = tbl->item(row, MachinesColumn::Destinations);
+            if (!item) {
+                continue;
+            }
+            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+            const auto hide = !showSet.intersects(set);
             tbl->setRowHidden(row, hide);
+        }
+    }
+    {
+        const auto tbl = this->ui->backupsTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = tbl->item(row, BackupsColumn::Destination);
+            if (!item) {
+                continue;
+            }
+            const auto itemDest = item->text();
+            tbl->setRowHidden(row, !showSet.contains(itemDest));
+        }
+    }
+    {
+        const auto tbl = this->ui->volumesTable;
+        const auto count = tbl->rowCount();
+        for (auto row = 0; row < count; ++row) {
+            const auto item = tbl->item(row, VolumesColumn::Destinations);
+            if (!item) {
+                continue;
+            }
+            const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+            tbl->setRowHidden(row, !showSet.intersects(set));
         }
     }
 }

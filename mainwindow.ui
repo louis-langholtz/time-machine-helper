@@ -175,7 +175,10 @@
           <string>Destinations</string>
          </property>
          <property name="toolTip">
-          <string>IDs of destinations where backups for the machine can be found.</string>
+          <string>Number of destinations where backups for the machine can be found.</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
          </property>
         </column>
         <column>
@@ -347,12 +350,18 @@
         </column>
         <column>
          <property name="text">
-          <string>Machine</string>
+          <string>Machines</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
          </property>
         </column>
         <column>
          <property name="text">
-          <string>Destination</string>
+          <string>Destinations</string>
+         </property>
+         <property name="textAlignment">
+          <set>AlignTrailing|AlignVCenter</set>
          </property>
         </column>
         <column>

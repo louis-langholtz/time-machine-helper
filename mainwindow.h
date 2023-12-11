@@ -91,6 +91,7 @@ private:
                                    const QString& text);
     void handleTmStatusFinished(int code, int status);
     void handleMachineItemChanged(QTableWidgetItem *item);
+    void handleDestinationsItemChanged(QTableWidgetItem *item);
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);
@@ -109,7 +110,7 @@ private:
     QString sudoPath;
     QFont fixedFont;
     std::map<std::string, plist_dict> mountMap;
-    std::map<std::string, MachineInfo> machineMap;
+    std::map<QString, MachineInfo> machineMap;
     std::map<std::filesystem::path, PathInfo> pathInfoMap;
 };
 
