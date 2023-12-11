@@ -289,8 +289,10 @@ void DestinationsWidget::handleQueryFinished(int code, int status)
 void DestinationsWidget::update(
     const std::vector<plist_dict>& destinations)
 {
-    const auto font =
+    const auto fixedFont =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const auto smallFont =
+        QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
     auto mountPoints = std::map<std::string, plist_dict>{};
     auto row = 0;
     const auto rowCount = int(destinations.size());
@@ -312,36 +314,33 @@ void DestinationsWidget::update(
             Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
         auto checked = false;
         {
-            const auto flags = mp
-                ? Qt::ItemIsUserCheckable|Qt::ItemIsEnabled
-                : Qt::ItemIsUserCheckable;
-            const auto defaults =
-                ItemDefaults{}.use(std::optional<bool>{mp && !ec})
-                                      .use(flags|Qt::ItemIsUserCheckable);
-            const auto item = createdItem(this, row, 0, defaults);
-            const auto v = get<std::string>(d, "Name");
-            item->setText(QString::fromStdString(v.value_or("")));
+            const auto on = std::optional<bool>{mp && !ec};
+            const auto item = createdItem(this, row, 0,
+                                          ItemDefaults{}.use(on));
+            item->setFlags(flags|Qt::ItemIsUserCheckable);
+            item->setText(QString::fromStdString(
+                get<std::string>(d, "Name").value_or("")));
             item->setToolTip("Backup disk a.k.a. backup destination.");
             checked = item->checkState() == Qt::CheckState::Checked;
         }
         {
             const auto item = createdItem(this, row, 1,
-                                          ItemDefaults{}.use(flags));
+                                          ItemDefaults{}.use(fixedFont));
+            item->setFlags(flags);
             item->setText(QString::fromStdString(id.value_or("")));
-            item->setFont(font);
         }
         {
-            const auto item = createdItem(this, row, 2,
-                                          ItemDefaults{}.use(flags));
-            const auto v = get<std::string>(d, "Kind");
-            item->setText(QString::fromStdString(v.value_or("")));
+            const auto item = createdItem(this, row, 2);
+            item->setFlags(flags);
+            item->setText(QString::fromStdString(
+                get<std::string>(d, "Kind").value_or("")));
         }
         {
             constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
             const auto item = createdItem(this, row, 3,
-                                          ItemDefaults{}.use(flags).use(align));
+                                          ItemDefaults{}.use(align).use(fixedFont));
+            item->setFlags(flags);
             item->setText(QString::fromStdString(mp.value_or("")));
-            item->setFont(font);
         }
         {
             const auto used = si.capacity - si.free;
@@ -368,17 +367,16 @@ void DestinationsWidget::update(
                                   ? QString("%1%").arg(percentUsage)
                                   : QString{};
             const auto item = createdItem(this, row, 4,
-                                          ItemDefaults{}.use(flags).use(align));
-            auto f =
-                QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
-            item->setFont(f);
+                                          ItemDefaults{}.use(align)
+                                                        .use(smallFont));
+            item->setFlags(flags);
             item->setText(text);
         }
         {
             const auto item = createdItem(this, row, 5,
-                                          ItemDefaults{}.use(flags)
-                                                        .use(alignRight)
-                                                        .use(font));
+                                          ItemDefaults{}.use(alignRight)
+                                                        .use(fixedFont));
+            item->setFlags(flags);
             if (mp && !ec) {
                 item->setData(Qt::EditRole, double(si.capacity) / gigabyte);
             }
@@ -391,9 +389,9 @@ void DestinationsWidget::update(
                                           row,
                                           6,
                                           ItemDefaults{}
-                                              .use(flags)
                                               .use(alignRight)
-                                              .use(font));
+                                              .use(fixedFont));
+            item->setFlags(flags);
             if (mp && !ec) {
                 item->setData(Qt::EditRole, double(si.free) / gigabyte);
             }
@@ -405,7 +403,8 @@ void DestinationsWidget::update(
             const auto status = this->lastStatus;
             const auto mountPoint = mp.value_or("");
             const auto item = createdItem(this, row, 7,
-                                          ItemDefaults{}.use(flags).use(font));
+                                          ItemDefaults{}.use(fixedFont));
+            item->setFlags(flags);
             item->setText(textForBackupStatus(status, mountPoint));
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
