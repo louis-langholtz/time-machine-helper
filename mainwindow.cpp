@@ -173,6 +173,22 @@ auto toStringList(const QSet<QString>& strings,
     return result;
 }
 
+auto toStringList(const std::set<QString>& strings,
+                  const int max = -1,
+                  const QString &etc = "...")
+    -> QStringList
+{
+    QStringList result;
+    for (const auto& string: strings) {
+        if ((max >= 0) && (max <= result.size())) {
+            result << etc;
+            break;
+        }
+        result << string;
+    }
+    return result;
+}
+
 auto anyStartsWith(const QMap<QString, QByteArray>& attrs,
                    const QStringList& prefices) -> bool
 {
@@ -387,7 +403,16 @@ auto durationToolTip(const std::optional<std::chrono::microseconds>& t0,
     const auto maxString = (minmax.second > 0ms)
         ? QDateTime::fromMSecsSinceEpoch(minmax.second.count()).toString()
         : unknown;
-    return QString{"Started: %1\nEnded: %2"}.arg(minString, maxString);
+    return QString{"%1...%2"}.arg(minString, maxString);
+}
+
+auto firstToLastToolTip(const std::set<QString>& set)
+    -> QString
+{
+    if (set.empty()) {
+        return {};
+    }
+    return QString{"%1...%2"}.arg(*set.begin(), *set.rbegin());
 }
 
 auto concatenate(const std::filesystem::path::iterator& first,
@@ -657,6 +682,37 @@ void MainWindow::updateStorageDir()
     resizeColumnsToContents(this->ui->machinesTable);
 }
 
+template <class T>
+auto toStdSet(const QSet<T>& set)
+    -> std::set<T>
+{
+    auto result = std::set<T>{};
+    for (const auto& elem: set) {
+        result.insert(elem);
+    }
+    return result;
+}
+
+template <class T>
+auto insert(std::set<T>& dst, const QSet<T>& src)
+    -> std::set<T>&
+{
+    for (const auto& elem: src) {
+        dst.insert(elem);
+    }
+    return dst;
+}
+
+template <class T>
+auto erase(std::set<T>& dst, const QSet<T>& src)
+    -> std::set<T>&
+{
+    for (const auto& elem: src) {
+        dst.erase(elem);
+    }
+    return dst;
+}
+
 void MainWindow::updateMachineDir(const std::filesystem::path& dir,
                                   const QSet<QString>& filenames)
 {
@@ -695,7 +751,7 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
                 }
             }
             if (const auto item = tbl->item(row, VolumesColumn::Backups)) {
-                item->setData(Qt::UserRole, QVariant::fromValue(QSet<QString>{}));
+                item->setData(Qt::UserRole, QVariant::fromValue(std::set<QString>{}));
             }
         }
     }
@@ -704,14 +760,12 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
         foundRow >= 0) {
         if (const auto item = this->ui->machinesTable->item(
                 foundRow, MachinesColumn::Backups)) {
-            auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-            set.removeIf([&](const QString& name){
-                return backupsToDelete.contains(name);
-            });
-            set.unite(filenames);
+            auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+            erase(set, backupsToDelete);
+            insert(set, filenames);
             item->setData(Qt::UserRole, QVariant::fromValue(set));
-            item->setData(Qt::DisplayRole, set.size());
-            item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+            item->setData(Qt::DisplayRole, qsizetype(set.size()));
+            item->setToolTip(firstToLastToolTip(set));
         }
     }
     resizeColumnsToContents(this->ui->backupsTable);
@@ -737,9 +791,10 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
     if (!item) {
         return;
     }
-    item->setData(Qt::UserRole, QVariant::fromValue(filenames));
-    item->setData(Qt::DisplayRole, filenames.size());
-    item->setToolTip(toStringList(filenames, maxToolTipStringList).join(", "));
+    const auto set = toStdSet(filenames);
+    item->setData(Qt::UserRole, QVariant::fromValue(set));
+    item->setData(Qt::DisplayRole, qsizetype(set.size()));
+    item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
 }
 
 void MainWindow::updateDirEntry(
@@ -840,25 +895,25 @@ void MainWindow::updateMachine(const std::string& name,
     }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Destinations,
                                       ItemDefaults{opts}.use(font).use(alignRight))) {
-        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         set.insert(destName);
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Volumes,
                                       ItemDefaults{opts}.use(font).use(alignRight))) {
-        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Backups,
                                       ItemDefaults{opts}.use(font).use(alignRight))) {
-        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
-        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
+        item->setToolTip(firstToLastToolTip(set));
     }
 }
 
@@ -932,7 +987,7 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Volumes,
                                       ItemDefaults{}.use(flags).use(alignRight).use(font))) {
-        const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         item->setData(Qt::UserRole, QVariant::fromValue(set));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
@@ -1004,10 +1059,10 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     }
     if (const auto item = createdItem(tbl, row, VolumesColumn::Machines,
                                       ItemDefaults{}.use(font).use(alignRight))) {
-        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         set.insert(machName);
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
         {
             const auto machTbl = this->ui->machinesTable;
@@ -1017,10 +1072,10 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
             if (mr >= 0) {
                 if (const auto item = createdItem(machTbl, mr, MachinesColumn::Volumes,
                                                   ItemDefaults{}.use(font).use(alignRight))) {
-                    auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+                    auto set = item->data(Qt::UserRole).value<std::set<QString>>();
                     set.insert(volumeName);
                     item->setData(Qt::UserRole, QVariant::fromValue(set));
-                    item->setData(Qt::DisplayRole, set.size());
+                    item->setData(Qt::DisplayRole, qsizetype(set.size()));
                     item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
                 }
             }
@@ -1028,19 +1083,19 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     }
     if (const auto item = createdItem(tbl, row, VolumesColumn::Destinations,
                                       ItemDefaults{}.use(font).use(alignRight))) {
-        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         set.insert(destName);
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
     }
     if (const auto item = createdItem(tbl, row, VolumesColumn::Backups,
                                       ItemDefaults{}.use(font).use(alignRight))) {
-        auto set = item->data(Qt::UserRole).value<QSet<QString>>();
+        auto set = item->data(Qt::UserRole).value<std::set<QString>>();
         set.insert(backupName);
         item->setData(Qt::UserRole, QVariant::fromValue(set));
-        item->setData(Qt::DisplayRole, set.size());
-        item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
+        item->setData(Qt::DisplayRole, qsizetype(set.size()));
+        item->setToolTip(firstToLastToolTip(set));
     }
     if (foundRow < 0) {
         resizeColumnsToContents(tbl);
@@ -1410,12 +1465,16 @@ void MainWindow::handleItemChanged(QTableWidgetItem *)
         for (auto row = 0; row < count; ++row) {
             auto hide = false;
             if (const auto item = tbl->item(row, MachinesColumn::Destinations)) {
-                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-                hide |= !showDests.intersects(set);
+                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+                const auto it = std::find_first_of(set.begin(), set.end(),
+                                                   showDests.begin(), showDests.end());
+                hide |= (it == set.end());
             }
             if (const auto item = tbl->item(row, MachinesColumn::Volumes)) {
-                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-                hide |= !showVols.intersects(set);
+                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+                const auto it = std::find_first_of(set.begin(), set.end(),
+                                                   showVols.begin(), showVols.end());
+                hide |= (it == set.end());
             }
             tbl->setRowHidden(row, hide);
         }
@@ -1426,12 +1485,16 @@ void MainWindow::handleItemChanged(QTableWidgetItem *)
         for (auto row = 0; row < count; ++row) {
             auto hide = false;
             if (const auto item = tbl->item(row, VolumesColumn::Destinations)) {
-                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-                hide |= !showDests.intersects(set);
+                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+                const auto it = std::find_first_of(set.begin(), set.end(),
+                                                   showDests.begin(), showDests.end());
+                hide |= (it == set.end());
             }
             if (const auto item = tbl->item(row, VolumesColumn::Machines)) {
-                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-                hide |= !showMachs.intersects(set);
+                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+                const auto it = std::find_first_of(set.begin(), set.end(),
+                                                   showMachs.begin(), showMachs.end());
+                hide |= (it == set.end());
             }
             tbl->setRowHidden(row, hide);
         }
@@ -1448,8 +1511,10 @@ void MainWindow::handleItemChanged(QTableWidgetItem *)
                 hide |= !showMachs.contains(item->text());
             }
             if (const auto item = tbl->item(row, BackupsColumn::Volumes)) {
-                const auto set = item->data(Qt::UserRole).value<QSet<QString>>();
-                hide |= !showVols.intersects(set);
+                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
+                const auto it = std::find_first_of(set.begin(), set.end(),
+                                                   showVols.begin(), showVols.end());
+                hide |= (it == set.end());
             }
             tbl->setRowHidden(row, hide);
         }

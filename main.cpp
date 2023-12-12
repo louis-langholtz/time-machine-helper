@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <set>
 
 #include <QApplication>
 
@@ -18,6 +19,7 @@ auto main(int argc, char *argv[]) -> int
     qRegisterMetaType<std::filesystem::file_status>();
     qRegisterMetaType<std::error_code>();
     qRegisterMetaType<std::chrono::seconds>();
+    qRegisterMetaType<std::set<QString>>();
 
     QMetaType::registerConverter<std::chrono::seconds, QString>(
         [](std::chrono::seconds value) {
