@@ -17,13 +17,17 @@
 #include <QScrollBar>
 #include <QTimer>
 #include <QLineEdit>
+#include <QTreeWidget>
+#include <QFontDatabase>
 
+#include "directoryreader.h"
 #include "pathactiondialog.h"
 
 namespace {
 
 constexpr auto oneSecondsInMS = 1000;
 constexpr auto twoSecondsInMS = 2000;
+constexpr auto indentation = 10;
 
 constexpr auto openMode =
     QProcess::ReadWrite|QProcess::Text|QProcess::Unbuffered;
@@ -42,13 +46,60 @@ auto toHtmlList(const QStringList &strings) -> QString
     return result;
 }
 
+auto findItem(QTreeWidgetItem *item,
+              std::filesystem::path::iterator first,
+              const std::filesystem::path::iterator& last)
+    -> QTreeWidgetItem*
+{
+    if (!item) {
+        return nullptr;
+    }
+    for (; first != last; ++first) {
+        auto foundChild = static_cast<QTreeWidgetItem*>(nullptr);
+        const auto count = item->childCount();
+        for (auto i = 0; i < count; ++i) {
+            const auto child = item->child(i);
+            if (child && child->text(0) == first->c_str()) {
+                foundChild = child;
+                break;
+            }
+        }
+        if (!foundChild) {
+            break;
+        }
+        item = foundChild;
+    }
+    return (first == last) ? item : nullptr;
+}
+
+auto findItem(QTreeWidget& tree,
+              const std::filesystem::path::iterator& first,
+              const std::filesystem::path::iterator& last)
+    -> QTreeWidgetItem*
+{
+    const auto count = tree.topLevelItemCount();
+    for (auto i = 0; i < count; ++i) {
+        const auto item = tree.topLevelItem(i);
+        if (!item) {
+            continue;
+        }
+        const auto key = item->text(0);
+        const auto root = std::filesystem::path{key.toStdString()};
+        const auto result = std::mismatch(first, last, root.begin(), root.end());
+        if (result.second == root.end()) {
+            return findItem(item, result.first, last);
+        }
+    }
+    return nullptr;
+}
+
 }
 
 PathActionDialog::PathActionDialog(QWidget *parent):
     QDialog{parent},
     splitter{new QSplitter{this}},
     textLabel{new QLabel{this}},
-    pathsWidget{new QTextEdit{this}},
+    pathsWidget{new QTreeWidget{this}},
     withAdminCheckBox{new QCheckBox{"As Admin", this}},
     withAskPassCheckBox{new QCheckBox{this}},
     yesButton{new QPushButton{"Yes", this}},
@@ -75,13 +126,14 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->textLabel->setObjectName("textLabel");
 
     this->pathsWidget->setObjectName("pathsWidget");
-    this->pathsWidget->setReadOnly(true);
-    this->pathsWidget->setLineWrapMode(QTextEdit::NoWrap);
+    this->pathsWidget->setHeaderLabels(QStringList{} << "Path");
     this->pathsWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    this->pathsWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
+    this->pathsWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     this->pathsWidget->setSizePolicy(
         QSizePolicy::Preferred, QSizePolicy::Expanding);
     this->pathsWidget->setMinimumHeight(0);
+    this->pathsWidget->setIndentation(indentation);
+    this->pathsWidget->setSelectionMode(QAbstractItemView::NoSelection);
 
     this->withAdminCheckBox->setChecked(this->withAdmin);
     this->withAdminCheckBox->setToolTip(
@@ -172,10 +224,18 @@ PathActionDialog::PathActionDialog(QWidget *parent):
         return mainLayout;
     }());
 
+    connect(this->pathsWidget, &QTreeWidget::itemExpanded,
+            this, &PathActionDialog::expandPath);
+    connect(this->pathsWidget, &QTreeWidget::itemCollapsed,
+            this, &PathActionDialog::collapsePath);
+    connect(this->pathsWidget, &QTreeWidget::itemSelectionChanged,
+            this, &PathActionDialog::changePathSelection);
     connect(this->withAdminCheckBox, &QCheckBox::stateChanged,
             this, &PathActionDialog::changeAsRoot);
     connect(this->withAskPassCheckBox, &QCheckBox::stateChanged,
             this, &PathActionDialog::changeAskPass);
+    connect(this->yesButton, &QPushButton::clicked,
+            this, &PathActionDialog::startAction);
     connect(this->noButton, &QPushButton::clicked,
             this, &PathActionDialog::close);
     connect(this->stopButton, &QPushButton::clicked,
@@ -270,6 +330,12 @@ auto PathActionDialog::stopSignal() const noexcept -> int
     return this->stopSig;
 }
 
+auto PathActionDialog::selectable() const -> bool
+{
+    return this->pathsWidget->selectionMode() !=
+           QAbstractItemView::NoSelection;
+}
+
 void PathActionDialog::setText(const QString &text)
 {
     this->textLabel->setText(text);
@@ -282,19 +348,27 @@ void PathActionDialog::setFirstArgs(const QStringList &args)
 
 void PathActionDialog::setPaths(const QStringList &paths)
 {
+    const auto fixedFont =
+        QFontDatabase::systemFont(QFontDatabase::FixedFont);
     this->pathList = paths;
-    this->pathsWidget->setHtml(toHtmlList(paths));
-
-    // todo: get this to work!
-    const auto* doc = this->pathsWidget->document();
-    const auto* sb = this->pathsWidget->horizontalScrollBar();
-    //const auto fm = QFontMetrics(this->pathsWidget->currentFont());
-    const auto margins = this->pathsWidget->contentsMargins();
-    const auto h = (doc->size().toSize().height()) +
-                   (this->pathsWidget->frameWidth() * 2) +
-                   margins.top() + margins.bottom() +
-                   (sb? sb->height(): 0);
-    qDebug() << "setPaths setting max h:" << h;
+    this->pathsWidget->clear();
+    using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+    using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
+    const auto policy = this->selectable()
+                            ? ShowIndicator
+                            : DontShowIndicator;
+    for (const auto& path: paths) {
+        const auto item = new QTreeWidgetItem{QTreeWidgetItem::UserType};
+        item->setFont(0, fixedFont);
+        item->setText(0, path);
+        item->setData(0, Qt::UserRole,
+                      QVariant::fromValue(std::filesystem::path{path.toStdString()}));
+        item->setChildIndicatorPolicy(policy);
+        item->setSelected(true);
+        this->pathsWidget->addTopLevelItem(item);
+        item->setSelected(true);
+    }
+    this->pathsWidget->resizeColumnToContents(0);
 }
 
 void PathActionDialog::setLastArgs(const QStringList &args)
@@ -308,14 +382,10 @@ void PathActionDialog::setAction(const QString &action)
     if (action.isEmpty()) {
         this->yesButton->setEnabled(false);
         this->noButton->setEnabled(false);
-        disconnect(this->yesButton, &QPushButton::clicked,
-                   this, &PathActionDialog::startAction);
     }
     else {
         this->yesButton->setEnabled(true);
         this->noButton->setEnabled(true);
-        connect(this->yesButton, &QPushButton::clicked,
-                this, &PathActionDialog::startAction);
     }
 }
 
@@ -358,14 +428,20 @@ void PathActionDialog::setStopSignal(int sig)
     this->stopSig = sig;
 }
 
+void PathActionDialog::setSelectable(bool value)
+{
+    this->pathsWidget->setSelectionMode(value
+        ? QAbstractItemView::MultiSelection
+        : QAbstractItemView::NoSelection);
+}
+
 void PathActionDialog::startAction()
 {
+    this->pathsWidget->setEnabled(false);
     this->withAdminCheckBox->setEnabled(false);
     this->withAskPassCheckBox->setEnabled(false);
-
     this->yesButton->setEnabled(false);
     this->noButton->setEnabled(false);
-
     this->outputWidget->setEnabled(true);
 
     const auto program = QString((this->withAdmin)
@@ -515,6 +591,50 @@ void PathActionDialog::changeAskPass(int state)
     this->setAskPass(state != Qt::Unchecked);
 }
 
+void PathActionDialog::changePathSelection()
+{
+    qDebug() << "PathActionDialog::changePathSelection called";
+    auto newList = QStringList{};
+    for (const auto item: this->pathsWidget->selectedItems()) {
+        if (!item) {
+            continue;
+        }
+        const auto path = item->data(0, Qt::UserRole)
+                              .value<std::filesystem::path>();
+        newList << path.c_str();
+    }
+    qDebug() << "PathActionDialog::changePathSelection newList:" << newList;
+    this->pathList = newList;
+}
+
+void PathActionDialog::handleReaderEntry(
+    const std::filesystem::path &path,
+    const std::filesystem::file_status &status,
+    const QMap<QString, QByteArray> &)
+{
+    using QTreeWidgetItem::ChildIndicatorPolicy::ShowIndicator;
+    using QTreeWidgetItem::ChildIndicatorPolicy::DontShowIndicator;
+    const auto parent = ::findItem(*(this->pathsWidget),
+                                   path.begin(), --path.end());
+    if (!parent) {
+        qDebug() << "PathActionDialog::updateDirEntry parent not found";
+        return;
+    }
+    const auto filename = path.filename().string();
+    qDebug() << "PathActionDialog::updateDirEntry for" << filename;
+    const auto fixedFont =
+        QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const auto item = new QTreeWidgetItem{QTreeWidgetItem::UserType};
+    item->setFont(0, fixedFont);
+    item->setText(0, QString::fromStdString(filename));
+    item->setData(0, Qt::UserRole, QVariant::fromValue(path));
+    const auto policy = (status.type() == std::filesystem::file_type::directory)
+                            ? ShowIndicator
+                            : DontShowIndicator;
+    item->setChildIndicatorPolicy(policy);
+    parent->addChild(item);
+}
+
 void PathActionDialog::writePasswordToProcess()
 {
     if (!this->process || !this->pwdLineEdit) {
@@ -569,4 +689,29 @@ void PathActionDialog::setErrorOccurred(int error)
     this->statusBar->showMessage(
         QString("Process error occurred (%1): %2.")
             .arg(error).arg(errorString(noExplanationMsg)));
+}
+
+void PathActionDialog::expandPath(QTreeWidgetItem *item)
+{
+    const auto path = item->data(0, Qt::UserRole).value<std::filesystem::path>();
+    qDebug() << "PathActionDialog::expandPath" << path;
+    auto *workerThread = new DirectoryReader(path, this);
+    workerThread->setReadAttributes(false);
+    workerThread->setFilter({QDir::AllEntries});
+    connect(workerThread, &DirectoryReader::entry,
+            this, &PathActionDialog::handleReaderEntry);
+    connect(workerThread, &DirectoryReader::finished,
+            workerThread, &QObject::deleteLater);
+    connect(this, &PathActionDialog::destroyed,
+            workerThread, &DirectoryReader::quit);
+    workerThread->start();
+}
+
+void PathActionDialog::collapsePath( // NOLINT(readability-convert-member-functions-to-static)
+    QTreeWidgetItem *item)
+{
+    qDebug() << "PathActionDialog::collapsePath" << item->text(0);
+    for (const auto* child: item->takeChildren()) {
+        delete child;
+    }
 }

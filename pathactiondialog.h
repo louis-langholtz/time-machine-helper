@@ -1,6 +1,8 @@
 #ifndef PATHACTIONDIALOG_H
 #define PATHACTIONDIALOG_H
 
+#include <filesystem>
+
 #include <QDialog>
 #include <QStringList>
 #include <QProcessEnvironment>
@@ -15,6 +17,8 @@ class QLineEdit;
 class QLayout;
 class QVBoxLayout;
 class QCheckBox;
+class QTreeWidget;
+class QTreeWidgetItem;
 
 class PathActionDialog : public QDialog
 {
@@ -43,6 +47,7 @@ public:
     [[nodiscard]] auto sudoPath() const -> QString;
     [[nodiscard]] auto pathPrefix() const -> QString;
     [[nodiscard]] auto stopSignal() const noexcept -> int;
+    [[nodiscard]] auto selectable() const -> bool;
 
     void setText(const QString& text);
     void setFirstArgs(const QStringList& args);
@@ -57,6 +62,7 @@ public:
     void setSudoPath(const QString& path);
     void setPathPrefix(const QString& prefix);
     void setStopSignal(int sig);
+    void setSelectable(bool value);
 
     void startAction();
     void stopAction();
@@ -67,16 +73,22 @@ public:
     void setProcessStarted();
     void setProcessFinished(int code, int status);
     void setErrorOccurred(int error);
+    void expandPath(QTreeWidgetItem *item);
+    void collapsePath(QTreeWidgetItem *item);
 
 private:
     void disablePwdLineEdit();
     void changeAsRoot(int);
     void changeAskPass(int);
+    void changePathSelection();
+    void handleReaderEntry(const std::filesystem::path& path,
+                           const std::filesystem::file_status& status,
+                           const QMap<QString, QByteArray>& attrs);
 
     QSplitter* splitter{};
     QLabel* textLabel{};
     QLabel* pwdPromptLabel{};
-    QTextEdit* pathsWidget{};
+    QTreeWidget* pathsWidget{};
     QCheckBox* withAdminCheckBox{};
     QCheckBox* withAskPassCheckBox{};
     QPushButton* yesButton{};
