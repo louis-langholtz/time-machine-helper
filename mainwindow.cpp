@@ -103,8 +103,8 @@ namespace BackupsColumn {
 enum Enum: int {
     Name = 0,
     Type,
-    Version,
     State,
+    Version,
     Number,
     Duration,
     Size,
@@ -133,14 +133,6 @@ constexpr auto enabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 0, 0);}";
 constexpr auto disabledAdminButtonStyle =
     "QPushButton {color: rgb(180, 100, 100);}";
-
-auto toLongLong(const std::optional<QByteArray>& value)
-    -> std::optional<std::int64_t>
-{
-    auto okay = false;
-    const auto number = QString{value.value_or(QByteArray{})}.toLongLong(&okay);
-    return okay? std::optional<std::int64_t>{number}: std::optional<std::int64_t>{};
-}
 
 auto toMegaBytes(const std::optional<std::int64_t>& value)
     -> QString
@@ -214,6 +206,24 @@ auto get(const QMap<QString, QByteArray> &attrs, const QString &key)
         return {*it};
     }
     return {};
+}
+
+auto toLongLong(const std::optional<QByteArray>& value)
+    -> std::optional<std::int64_t>
+{
+    auto okay = false;
+    const auto number = QString{value.value_or(QByteArray{})}.toLongLong(&okay);
+    return okay? std::optional<std::int64_t>{number}: std::optional<std::int64_t>{};
+}
+
+auto toMicroseconds(const std::optional<QByteArray>& value)
+    -> std::optional<std::chrono::microseconds>
+{
+    const auto num = toLongLong(value);
+    using namespace std::chrono_literals;
+    return num
+        ? std::optional<std::chrono::microseconds>{*num * 1us}
+        : std::optional<std::chrono::microseconds>{};
 }
 
 auto pathTooltip(const QMap<QString, QByteArray> &attrs) -> QString
@@ -345,26 +355,39 @@ void remove(std::set<QTreeWidgetItem*>& items, QTreeWidgetItem* item)
     }
 }
 
-auto duration(const QMap<QString, QByteArray>& attrs)
+
+auto duration(const std::optional<std::chrono::microseconds>& t0,
+              const std::optional<std::chrono::microseconds>& t1)
     -> std::optional<std::chrono::seconds>
 {
-    const auto begData = get(attrs, snapshotStartAttr);
-    // Note: snapshotFinishAttr attribute appears to be removed
-    //   from backup directories by "tmutil delete -p <dir>".
-    const auto endData = get(attrs, snapshotFinishAttr);
-    if (begData && endData) {
+    if (t0 && t1) {
+        const auto minmax = std::minmax(*t0, *t1);
         using namespace std::chrono_literals;
-        auto begOk = false;
-        auto endOk = false;
-        const auto beg = QString(*begData).toLongLong(&begOk) * 1us;
-        const auto end = QString(*endData).toLongLong(&endOk) * 1us;
-        if (begOk && endOk) {
-            return {
-                std::chrono::duration_cast<std::chrono::seconds>(end - beg)
-            };
-        }
+        return {
+            std::chrono::duration_cast<std::chrono::seconds>(
+                (minmax.second - minmax.first))
+        };
     }
     return {};
+}
+
+auto durationToolTip(const std::optional<std::chrono::microseconds>& t0,
+                     const std::optional<std::chrono::microseconds>& t1)
+    -> QString
+{
+    using namespace std::chrono_literals;
+    using namespace std::chrono;
+    const auto minmax = std::minmax(
+        t0? duration_cast<milliseconds>(*t0): 0ms,
+        t1? duration_cast<milliseconds>(*t1): 0ms);
+    const auto unknown = QString{"unknown"};
+    const auto minString = (minmax.first > 0ms)
+        ? QDateTime::fromMSecsSinceEpoch(minmax.first.count()).toString()
+        : unknown;
+    const auto maxString = (minmax.second > 0ms)
+        ? QDateTime::fromMSecsSinceEpoch(minmax.second.count()).toString()
+        : unknown;
+    return QString{"Started: %1\nEnded: %2"}.arg(minString, maxString);
 }
 
 auto concatenate(const std::filesystem::path::iterator& first,
@@ -436,6 +459,24 @@ auto toString(const std::optional<QByteArray> &data)
         }
     }
     return {QString::fromUtf8(QByteArrayView{data->data(), &(*first) + 1})};
+}
+
+auto checkedTextStrings(const QTableWidget& tbl, int column)
+    -> QSet<QString>
+{
+    auto strings = QSet<QString>{};
+    const auto count = tbl.rowCount();
+    for (auto row = 0; row < count; ++row) {
+        auto item = tbl.item(row, column);
+        if (!item) {
+            continue;
+        }
+        const auto checkState = item->checkState();
+        if (checkState != Qt::CheckState::Unchecked) {
+            strings.insert(item->text());
+        }
+    }
+    return strings;
 }
 
 }
@@ -876,8 +917,13 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Duration,
                                       ItemDefaults{}.use(flags).use(alignRight).use(font))) {
-        const auto time = duration(attrs);
+        const auto beg = toMicroseconds(get(attrs, snapshotStartAttr));
+        // Note: snapshotFinishAttr attribute appears to be removed
+        //   from backup directories by "tmutil delete -p <dir>".
+        const auto end = toMicroseconds(get(attrs, snapshotFinishAttr));
+        const auto time = duration(beg, end);
         item->setData(Qt::DisplayRole, time? QVariant::fromValue(*time): QVariant{});
+        item->setToolTip(durationToolTip(beg, end));
     }
     if (const auto item = createdItem(tbl, foundRow, BackupsColumn::Size,
                                       ItemDefaults{}.use(flags).use(alignRight).use(font))) {
@@ -1352,51 +1398,12 @@ void MainWindow::handleTmStatusFinished(int code, int status)
 
 void MainWindow::handleItemChanged(QTableWidgetItem *)
 {
-    auto showDests = QSet<QString>{};
-    {
-        const auto tbl = this->ui->destinationsTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, 0);
-            if (!item) {
-                continue;
-            }
-            const auto checkState = item->checkState();
-            if (checkState != Qt::CheckState::Unchecked) {
-                showDests.insert(item->text());
-            }
-        }
-    }
-    auto showMachs = QSet<QString>{};
-    {
-        const auto tbl = this->ui->machinesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            auto item = tbl->item(row, MachinesColumn::Name);
-            if (!item) {
-                continue;
-            }
-            const auto checkState = item->checkState();
-            if (checkState != Qt::CheckState::Unchecked) {
-                showMachs.insert(item->text());
-            }
-        }
-    }
-    auto showVols = QSet<QString>{};
-    {
-        const auto tbl = this->ui->volumesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            const auto item = tbl->item(row, VolumesColumn::Name);
-            if (!item) {
-                continue;
-            }
-            const auto checkState = item->checkState();
-            if (checkState != Qt::CheckState::Unchecked) {
-                showVols.insert(item->text());
-            }
-        }
-    }
+    const auto showDests =
+        checkedTextStrings(*this->ui->destinationsTable, 0);
+    const auto showMachs =
+        checkedTextStrings(*this->ui->machinesTable, MachinesColumn::Name);
+    const auto showVols =
+        checkedTextStrings(*this->ui->volumesTable, VolumesColumn::Name);
     {
         const auto tbl = this->ui->machinesTable;
         const auto count = tbl->rowCount();

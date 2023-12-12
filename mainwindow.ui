@@ -325,6 +325,11 @@
         </column>
         <column>
          <property name="text">
+          <string>State</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
           <string>Version</string>
          </property>
          <property name="toolTip">
@@ -332,11 +337,6 @@
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>State</string>
          </property>
         </column>
         <column>
