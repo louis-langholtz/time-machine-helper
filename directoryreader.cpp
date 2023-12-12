@@ -186,9 +186,20 @@ auto DirectoryReader::filter() const noexcept
     return this->filters;
 }
 
+auto DirectoryReader::readAttributes() const noexcept
+    -> bool
+{
+    return this->readAttrs;
+}
+
 void DirectoryReader::setFilter(QDir::Filters filters)
 {
     this->filters = filters;
+}
+
+void DirectoryReader::setReadAttributes(bool value)
+{
+    this->readAttrs = value;
 }
 
 void DirectoryReader::run() {
@@ -224,18 +235,23 @@ void DirectoryReader::run() {
                        << ec.message()
                        << ", path:" << path.c_str();
         }
-        const auto xattrNames = readAttributeNames(path, ec);
-        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-            continue;
-        }
-        const auto xattrMap = getAttributes(path, xattrNames);
-        if (!xattrMap) {
-            continue;
-        }
         if (!okay(this->filters, status)) {
             continue;
         }
-        emit entry(path, status, *xattrMap);
+        if (this->readAttrs) {
+            const auto xattrNames = readAttributeNames(path, ec);
+            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+                continue;
+            }
+            const auto xattrMap = getAttributes(path, xattrNames);
+            if (!xattrMap) {
+                continue;
+            }
+            emit entry(path, status, *xattrMap);
+        }
+        else {
+            emit entry(path, status, QMap<QString,QByteArray>{});
+        }
         filenames.insert(QString::fromStdString(filename));
     }
     emit ended(this->directory, std::error_code{}, filenames);

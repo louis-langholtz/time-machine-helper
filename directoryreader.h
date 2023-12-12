@@ -26,7 +26,11 @@ public:
 
     [[nodiscard]] auto filter() const noexcept
         -> QDir::Filters;
+    [[nodiscard]] auto readAttributes() const noexcept
+        -> bool;
+
     void setFilter(QDir::Filters filters);
+    void setReadAttributes(bool value);
 
 signals:
     void entry(const std::filesystem::path& path,
@@ -41,6 +45,7 @@ private:
 
     std::filesystem::path directory;
     QDir::Filters filters{QDir::Dirs|QDir::NoSymLinks};
+    bool readAttrs{true};
 };
 
 #endif // DIRECTORYREADER_H
