@@ -283,53 +283,6 @@ auto findDeletableTopLevelItems(
     return result;
 }
 
-auto findItem(QTreeWidgetItem *item,
-              std::filesystem::path::iterator first,
-              const std::filesystem::path::iterator& last)
-    -> QTreeWidgetItem*
-{
-    if (!item) {
-        return nullptr;
-    }
-    for (; first != last; ++first) {
-        auto foundChild = static_cast<QTreeWidgetItem*>(nullptr);
-        const auto count = item->childCount();
-        for (auto i = 0; i < count; ++i) {
-            const auto child = item->child(i);
-            if (child && child->text(0) == first->c_str()) {
-                foundChild = child;
-                break;
-            }
-        }
-        if (!foundChild) {
-            break;
-        }
-        item = foundChild;
-    }
-    return (first == last) ? item : nullptr;
-}
-
-auto findItem(QTreeWidget& tree,
-              const std::filesystem::path::iterator& first,
-              const std::filesystem::path::iterator& last)
-    -> QTreeWidgetItem*
-{
-    const auto count = tree.topLevelItemCount();
-    for (auto i = 0; i < count; ++i) {
-        const auto item = tree.topLevelItem(i);
-        if (!item) {
-            continue;
-        }
-        const auto key = item->text(0);
-        const auto root = std::filesystem::path{key.toStdString()};
-        const auto result = std::mismatch(first, last, root.begin(), root.end());
-        if (result.second == root.end()) {
-            return findItem(item, result.first, last);
-        }
-    }
-    return nullptr;
-}
-
 auto findRow(const QTableWidget& table,
              const std::initializer_list<std::pair<int, QString>>& keys)
     -> int
@@ -1100,6 +1053,7 @@ void MainWindow::uniqueSizeSelectedPaths()
         this->ui->backupsTable->selectedItems());
     qInfo() << "uniqueSizeSelectedPaths called for" << selectedPaths;
 
+    // Run as root to avoid error: "Not inside a machine directory"!
     const auto dialog = new PathActionDialog{this};
     {
         // Ensures output of tmutil shown as soon as available.
@@ -1107,6 +1061,7 @@ void MainWindow::uniqueSizeSelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
+    dialog->setSelectable(true);
     dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Unique Size Dialog");
     dialog->setText(
@@ -1148,6 +1103,7 @@ void MainWindow::restoreSelectedPaths()
         env.insert("STDBUF", "L"); // see "man 3 setbuf"
         dialog->setEnvironment(env);
     }
+    dialog->setSelectable(true);
     dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Restore Dialog");
     dialog->setText(QString(
