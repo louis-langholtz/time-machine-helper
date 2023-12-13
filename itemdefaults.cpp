@@ -18,6 +18,9 @@ auto createdItem(QTableWidget* parent,
                                     ? Qt::CheckState::Checked
                                     : Qt::CheckState::Unchecked);
         }
+        if (defaults.text_) {
+            item->setText(*defaults.text_);
+        }
         parent->setItem(row, column, item);
     }
     return item;

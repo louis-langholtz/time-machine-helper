@@ -10,6 +10,7 @@ struct ItemDefaults {
     Qt::Alignment alignment{Qt::AlignCenter};
     std::optional<QFont> font{};
     std::optional<bool> checked{};
+    std::optional<QString> text_{};
 
     constexpr auto use(const Qt::ItemFlags &v)
         -> ItemDefaults&
@@ -36,6 +37,13 @@ struct ItemDefaults {
         -> ItemDefaults&
     {
         this->checked = v;
+        return *this;
+    }
+
+    constexpr auto text(const QString& v)
+        -> ItemDefaults&
+    {
+        this->text_ = v;
         return *this;
     }
 };
