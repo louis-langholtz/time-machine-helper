@@ -17,6 +17,7 @@ class SettingsDialog : public QDialog
     // NOLINTEND
 
 public:
+    [[nodiscard]] static auto anyNonDefault() -> bool;
 
     explicit SettingsDialog(QWidget *parent = nullptr);
 
@@ -32,6 +33,7 @@ signals:
     void tmutilStatusIntervalChanged(int newMsecs);
     void tmutilDestinationsIntervalChanged(int newMsecs);
     void pathInfoIntervalChanged(int newMsecs);
+    void allReset();
 
 private:
     void openTmutilPathDialog();
@@ -44,8 +46,10 @@ private:
     void handleDestTimeChanged(int value);
     void handlePathInfoTimeChanged(int value);
     void save();
+    void reset();
 
     QPushButton *saveButton{};
+    QPushButton *resetButton{};
     QPushButton *closeButton{};
 
     QString tmutilPathStyle;
