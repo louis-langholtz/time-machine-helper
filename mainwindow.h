@@ -61,10 +61,10 @@ public:
         const QSet<QString>& filenames);
     void reportDir(const std::filesystem::path& dir,
                    const QSet<QString>& filenames);
-    void updateDirEntry(const std::filesystem::path& path,
+    void handleDirectoryReaderEntry(const std::filesystem::path& path,
                         const std::filesystem::file_status& status,
                         const QMap<QString, QByteArray>& attrs);
-    void updateMachine(const std::string& name,
+    void updateMachines(const std::string& name,
                        const QMap<QString, QByteArray>& attrs,
                        const plist_dict& dict);
     void updateBackups(const std::filesystem::path& path,
@@ -94,7 +94,8 @@ private:
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);
-    void updateStorageDir();
+    void updateStorageDir(const std::filesystem::path& dir,
+                          const QSet<QString>& filenames);
     void updateMachineDir(const std::filesystem::path& dir,
                           const QSet<QString>& filenames);
     void updateVolumeDir(const std::filesystem::path& dir,

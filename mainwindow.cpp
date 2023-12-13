@@ -428,10 +428,7 @@ auto concatenate(const std::filesystem::path::iterator& first,
 
 void resizeColumnsToContents(QTableWidget* table)
 {
-    const auto count = table->columnCount();
-    for (auto col = 0; col < count; ++col) {
-        table->resizeColumnToContents(col);
-    }
+    table->resizeColumnsToContents();
 }
 
 auto removeLast(std::input_iterator auto first,
@@ -502,6 +499,37 @@ auto checkedTextStrings(const QTableWidget& tbl, int column)
         }
     }
     return strings;
+}
+
+template <class T>
+auto toStdSet(const QSet<T>& set)
+    -> std::set<T>
+{
+    auto result = std::set<T>{};
+    for (const auto& elem: set) {
+        result.insert(elem);
+    }
+    return result;
+}
+
+template <class T>
+auto insert(std::set<T>& dst, const QSet<T>& src)
+    -> std::set<T>&
+{
+    for (const auto& elem: src) {
+        dst.insert(elem);
+    }
+    return dst;
+}
+
+template <class T>
+auto erase(std::set<T>& dst, const QSet<T>& src)
+    -> std::set<T>&
+{
+    for (const auto& elem: src) {
+        dst.erase(elem);
+    }
+    return dst;
 }
 
 }
@@ -664,7 +692,7 @@ void MainWindow::reportDir(
     }
     const auto& attrs = it->second.attributes;
     if (isStorageDir(attrs)) {
-        updateStorageDir();
+        updateStorageDir(dir, filenames);
         return;
     }
     if (isMachineDir(attrs)) {
@@ -677,40 +705,10 @@ void MainWindow::reportDir(
     }
 }
 
-void MainWindow::updateStorageDir()
+void MainWindow::updateStorageDir(const std::filesystem::path& dir,
+                                  const QSet<QString>& filenames)
 {
     resizeColumnsToContents(this->ui->machinesTable);
-}
-
-template <class T>
-auto toStdSet(const QSet<T>& set)
-    -> std::set<T>
-{
-    auto result = std::set<T>{};
-    for (const auto& elem: set) {
-        result.insert(elem);
-    }
-    return result;
-}
-
-template <class T>
-auto insert(std::set<T>& dst, const QSet<T>& src)
-    -> std::set<T>&
-{
-    for (const auto& elem: src) {
-        dst.insert(elem);
-    }
-    return dst;
-}
-
-template <class T>
-auto erase(std::set<T>& dst, const QSet<T>& src)
-    -> std::set<T>&
-{
-    for (const auto& elem: src) {
-        dst.erase(elem);
-    }
-    return dst;
 }
 
 void MainWindow::updateMachineDir(const std::filesystem::path& dir,
@@ -797,7 +795,7 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
     item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
 }
 
-void MainWindow::updateDirEntry(
+void MainWindow::handleDirectoryReaderEntry(
     const std::filesystem::path& path,
     const std::filesystem::file_status& status,
     const QMap<QString, QByteArray>& attrs)
@@ -821,8 +819,8 @@ void MainWindow::updateDirEntry(
         auto end = path.end(); --end; --end;
         const auto mp = concatenate(path.begin(), end);
         const auto it = this->mountMap.find(mp.string());
-        this->updateMachine(filename, attrs,
-                            ((it != this->mountMap.end())? it->second: plist_dict{}));
+        this->updateMachines(filename, attrs,
+                             ((it != this->mountMap.end())? it->second: plist_dict{}));
         this->updatePathInfo(path);
         return;
     }
@@ -845,9 +843,10 @@ void MainWindow::updateDirEntry(
     }
 }
 
-void MainWindow::updateMachine(const std::string& name,
-                               const QMap<QString, QByteArray>& attrs,
-                               const plist_dict &dict)
+void MainWindow::updateMachines(
+    const std::string& name,
+    const QMap<QString, QByteArray>& attrs,
+    const plist_dict &dict)
 {
     const auto machineUuid = toString(get(attrs, machineUuidAttr));
     const auto machineAddr = toString(get(attrs, machineMacAddrAttr));
@@ -879,12 +878,10 @@ void MainWindow::updateMachine(const std::string& name,
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     if (const auto item = createdItem(tbl, row, MachinesColumn::Name,
                                       ItemDefaults{}.use(flags|Qt::ItemIsUserCheckable)
-                                          .use(checked))) {
-        item->setText(machName);
+                                                    .use(checked).text(machName))) {
     }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Uuid,
-                                      ItemDefaults{opts}.use(font))) {
-        item->setText(uuid);
+                                      ItemDefaults{opts}.use(font).text(uuid))) {
     }
     if (const auto item = createdItem(tbl, row, MachinesColumn::Model, opts)) {
         item->setText(machineModel.value_or(QString{}));
@@ -999,6 +996,9 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
                                       ItemDefaults{}.use(flags))) {
         item->setText(destName);
     }
+    if (foundRow < 0) {
+        resizeColumnsToContents(tbl);
+    }
 }
 
 void MainWindow::updateVolumes(const std::filesystem::path& path,
@@ -1108,7 +1108,7 @@ void MainWindow::updatePathInfo(const std::string& pathName)
     connect(workerThread, &DirectoryReader::ended,
             this, &MainWindow::handleDirectoryReaderEnded);
     connect(workerThread, &DirectoryReader::entry,
-            this, &MainWindow::updateDirEntry);
+            this, &MainWindow::handleDirectoryReaderEntry);
     connect(workerThread, &DirectoryReader::finished,
             workerThread, &QObject::deleteLater);
     connect(this, &MainWindow::destroyed,
