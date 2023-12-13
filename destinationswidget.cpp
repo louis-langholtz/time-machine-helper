@@ -12,6 +12,7 @@
 #include "itemdefaults.h"
 #include "plist_object.h"
 #include "plistprocess.h"
+#include "sortingdisabler.h"
 
 namespace {
 
@@ -289,6 +290,7 @@ void DestinationsWidget::handleQueryFinished(int code, int status)
 void DestinationsWidget::update(
     const std::vector<plist_dict>& destinations)
 {
+    constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     const auto fixedFont =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     const auto smallFont =
@@ -296,13 +298,12 @@ void DestinationsWidget::update(
     auto mountPoints = std::map<std::string, plist_dict>{};
     auto row = 0;
     const auto rowCount = int(destinations.size());
+    const SortingDisabler disableSort{this};
     this->setRowCount(rowCount);
     emit gotDestinations(rowCount);
     if (rowCount == 0) {
         return;
     }
-    this->setSortingEnabled(false);
-    constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     for (const auto& d: destinations) {
         const auto mp = get<std::string>(d, "MountPoint");
         const auto id = get<std::string>(d, "ID");
@@ -413,7 +414,6 @@ void DestinationsWidget::update(
         }
         ++row;
     }
-    this->setSortingEnabled(true);
     emit gotPaths(mountPoints);
 }
 
