@@ -6,11 +6,18 @@
 
 namespace Settings {
 
+auto defaultTmutilPath() -> QString;
+auto defaultSudoPath() -> QString;
+auto defaultTmutilStatInterval() -> int;
+auto defaultTmutilDestInterval() -> int;
+auto defaultPathInfoInterval() -> int;
+
 auto tmutilPath() -> QString;
+auto sudoPath() -> QString;
 auto tmutilStatInterval() -> int;
 auto tmutilDestInterval() -> int;
-auto sudoPath() -> QString;
 auto pathInfoInterval() -> int;
+
 auto mainWindowGeometry() -> QByteArray;
 auto mainWindowState() -> QByteArray;
 auto destinationsTableState() -> QByteArray;
@@ -23,6 +30,7 @@ void setTmutilStatInterval(int value);
 void setTmutilDestInterval(int value);
 void setSudoPath(const QString& value);
 void setPathInfoInterval(int value);
+
 void setMainWindowGeometry(const QByteArray& value);
 void setMainWindowState(const QByteArray& value);
 void setDestinationsTableState(const QByteArray& value);

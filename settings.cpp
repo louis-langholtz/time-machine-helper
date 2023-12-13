@@ -17,12 +17,6 @@ constexpr auto machinesTableStateKey = "machinesTableState";
 constexpr auto volumesTableStateKey = "volumesTableState";
 constexpr auto backupsTableStateKey = "backupsTableState";
 
-constexpr auto defaultTmutilPath = "/usr/bin/tmutil";
-constexpr auto defaultTmutilStatTime = 1000;
-constexpr auto defaultTmutilDestTime = 2500;
-constexpr auto defaultSudoPath = "/usr/bin/sudo";
-constexpr auto defaultPathInfoTime = 10000;
-
 auto settings() -> QSettings &
 {
     static QSettings the;
@@ -31,34 +25,74 @@ auto settings() -> QSettings &
 
 }
 
+auto defaultTmutilPath() -> QString
+{
+    static const auto value = QString{"/usr/bin/tmutil"};
+    return value;
+}
+
+auto defaultSudoPath() -> QString
+{
+    static const auto value = QString{"/usr/bin/sudo"};
+    return value;
+}
+
+auto defaultTmutilStatInterval() -> int
+{
+    static constexpr auto value = 1000;
+    return value;
+}
+
+auto defaultTmutilDestInterval() -> int
+{
+    static constexpr auto value = 2500;
+    return value;
+}
+
+auto defaultPathInfoInterval() -> int
+{
+    static constexpr auto value = 10000;
+    return value;
+}
+
 auto tmutilPath() -> QString
 {
-    return settings().value(tmutilPathKey,
-                            QString(defaultTmutilPath)).toString();
-}
-
-auto tmutilStatInterval() -> int
-{
-    return settings().value(tmutilStatTimeKey,
-                            defaultTmutilStatTime).toInt();
-}
-
-auto tmutilDestInterval() -> int
-{
-    return settings().value(tmutilDestTimeKey,
-                            defaultTmutilDestTime).toInt();
+    return settings()
+        .value(tmutilPathKey,
+               QVariant::fromValue(defaultTmutilPath()))
+        .toString();
 }
 
 auto sudoPath() -> QString
 {
-    return settings().value(sudoPathKey,
-                            QString(defaultSudoPath)).toString();
+    return settings()
+        .value(sudoPathKey,
+               QVariant::fromValue(defaultSudoPath()))
+        .toString();
+}
+
+auto tmutilStatInterval() -> int
+{
+    return settings()
+        .value(tmutilStatTimeKey,
+               QVariant::fromValue(defaultTmutilStatInterval()))
+        .toInt();
+}
+
+auto tmutilDestInterval() -> int
+{
+    return settings()
+        .value(tmutilDestTimeKey,
+               QVariant::fromValue(defaultTmutilDestInterval()))
+        .toInt();
 }
 
 auto pathInfoInterval() -> int
 {
-    return settings().value(pathInfoTimeKey,
-                            defaultPathInfoTime).toInt();
+    return settings()
+        .value(pathInfoTimeKey,
+               QVariant::fromValue(defaultPathInfoInterval()))
+        .toInt();
 }
 
 auto mainWindowGeometry() -> QByteArray
