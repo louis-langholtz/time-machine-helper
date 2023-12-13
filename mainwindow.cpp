@@ -426,11 +426,6 @@ auto concatenate(const std::filesystem::path::iterator& first,
     return result;
 }
 
-void resizeColumnsToContents(QTableWidget* table)
-{
-    table->resizeColumnsToContents();
-}
-
 auto removeLast(std::input_iterator auto first,
                 std::input_iterator auto& last)
 {
@@ -561,7 +556,7 @@ MainWindow::MainWindow(QWidget *parent):
 
     this->ui->destinationsTable->setTmutilPath(this->tmutilPath);
     this->ui->destinationsTable->horizontalHeader()
-        ->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
+        ->setSectionResizeMode(QHeaderView::Interactive);
 
     connect(this->ui->actionAbout, &QAction::triggered,
             this, &MainWindow::showAboutDialog);
@@ -708,7 +703,6 @@ void MainWindow::reportDir(
 void MainWindow::updateStorageDir(const std::filesystem::path& dir,
                                   const QSet<QString>& filenames)
 {
-    resizeColumnsToContents(this->ui->machinesTable);
 }
 
 void MainWindow::updateMachineDir(const std::filesystem::path& dir,
@@ -766,7 +760,6 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
             item->setToolTip(firstToLastToolTip(set));
         }
     }
-    resizeColumnsToContents(this->ui->backupsTable);
 }
 
 void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
@@ -996,9 +989,6 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
                                       ItemDefaults{}.use(flags))) {
         item->setText(destName);
     }
-    if (foundRow < 0) {
-        resizeColumnsToContents(tbl);
-    }
 }
 
 void MainWindow::updateVolumes(const std::filesystem::path& path,
@@ -1096,9 +1086,6 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         item->setData(Qt::UserRole, QVariant::fromValue(set));
         item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(firstToLastToolTip(set));
-    }
-    if (foundRow < 0) {
-        resizeColumnsToContents(tbl);
     }
 }
 
@@ -1538,19 +1525,44 @@ void MainWindow::changePathInfoInterval(int msecs)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    qDebug() << "saving mainwindow geometry & state";
-    Settings::setMainWindowGeometry(saveGeometry());
+    qDebug() << "saving geometry & state";
+    Settings::setBackupsTableState(
+        this->ui->backupsTable->horizontalHeader()->saveState());
+    Settings::setVolumesTableState(
+        this->ui->volumesTable->horizontalHeader()->saveState());
+    Settings::setMachinesTableState(
+        this->ui->machinesTable->horizontalHeader()->saveState());
+    Settings::setDestinationsTableState(
+        this->ui->destinationsTable->horizontalHeader()->saveState());
     Settings::setMainWindowState(saveState());
+    Settings::setMainWindowGeometry(saveGeometry());
     QMainWindow::closeEvent(event);
 }
 
 void MainWindow::readSettings()
 {
+    qDebug() << "restoring geometry & state";
     if (!this->restoreGeometry(Settings::mainWindowGeometry())) {
         qDebug() << "unable to restore previous geometry";
     }
     if (!this->restoreState(Settings::mainWindowState())) {
         qDebug() << "unable to restore previous state";
+    }
+    if (!this->ui->destinationsTable->horizontalHeader()
+             ->restoreState(Settings::destinationsTableState())) {
+        qDebug() << "unable to restore previous destinations table state";
+    }
+    if (!this->ui->machinesTable->horizontalHeader()
+             ->restoreState(Settings::machinesTableState())) {
+        qDebug() << "unable to restore previous machines table state";
+    }
+    if (!this->ui->volumesTable->horizontalHeader()
+             ->restoreState(Settings::volumesTableState())) {
+        qDebug() << "unable to restore previous volumes table state";
+    }
+    if (!this->ui->backupsTable->horizontalHeader()
+             ->restoreState(Settings::backupsTableState())) {
+        qDebug() << "unable to restore previous backups table state";
     }
     this->destinationsTimer->start(Settings::tmutilDestInterval());
     this->statusTimer->start(Settings::tmutilStatInterval());
