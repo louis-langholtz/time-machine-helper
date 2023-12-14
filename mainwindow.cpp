@@ -122,6 +122,20 @@ constexpr auto pathInfoUpdateTime = 10000;
 constexpr auto maxToolTipStringList = 10;
 constexpr auto gigabyte = 1000 * 1000 * 1000;
 
+// A namespace scoped enum for the destinations table columns...
+namespace DestsColumn {
+enum Enum: int {
+    Name = 0,
+    ID,
+    Kind,
+    Mount,
+    Use,
+    Capacity,
+    Free,
+    BackupStat,
+};
+}
+
 // A namespace scoped enum for the machines table columns...
 namespace MachinesColumn {
 enum Enum: int {
@@ -1534,8 +1548,10 @@ void MainWindow::handleGotDestinations(
         const auto flags =
             Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
         {
-            const auto on = std::optional<Qt::CheckState>{(mp && !ec)? Qt::Checked: Qt::Unchecked};
-            const auto item = createdItem(this->ui->destinationsTable, row, 0,
+            const auto on = std::optional<Qt::CheckState>{
+                (mp && !ec)? Qt::Checked: Qt::Unchecked};
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::Name,
                                           ItemDefaults{}.use(on));
             item->setFlags(flags|Qt::ItemIsUserCheckable);
             item->setText(QString::fromStdString(
@@ -1543,20 +1559,22 @@ void MainWindow::handleGotDestinations(
             item->setToolTip("Backup disk a.k.a. backup destination.");
         }
         {
-            const auto item = createdItem(this->ui->destinationsTable, row, 1,
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::ID,
                                           ItemDefaults{}.use(fixedFont));
             item->setFlags(flags);
             item->setText(QString::fromStdString(id.value_or("")));
         }
         {
-            const auto item = createdItem(this->ui->destinationsTable, row, 2);
+            const auto item = createdItem(this->ui->destinationsTable, row, DestsColumn::Kind);
             item->setFlags(flags);
             item->setText(QString::fromStdString(
                 get<std::string>(d, "Kind").value_or("")));
         }
         {
             constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
-            const auto item = createdItem(this->ui->destinationsTable, row, 3,
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::Mount,
                                           ItemDefaults{}.use(align).use(fixedFont));
             item->setFlags(flags);
             item->setText(QString::fromStdString(mp.value_or("")));
@@ -1579,20 +1597,23 @@ void MainWindow::handleGotDestinations(
                                    .arg(used)
                                    .arg(si.capacity)
                                    .arg(si.free));
-            this->ui->destinationsTable->setCellWidget(row, 4, widget);
+            this->ui->destinationsTable->setCellWidget(row, DestsColumn::Use,
+                                                       widget);
 
             const auto align = Qt::AlignRight|Qt::AlignBottom;
             const auto text = (mp && !ec)
                                   ? QString("%1%").arg(percentUsage)
                                   : QString{};
-            const auto item = createdItem(this->ui->destinationsTable, row, 4,
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::Use,
                                           ItemDefaults{}.use(align)
                                               .use(smallFont));
             item->setFlags(flags);
             item->setText(text);
         }
         {
-            const auto item = createdItem(this->ui->destinationsTable, row, 5,
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::Capacity,
                                           ItemDefaults{}.use(alignRight)
                                               .use(fixedFont));
             item->setFlags(flags);
@@ -1605,8 +1626,7 @@ void MainWindow::handleGotDestinations(
         }
         {
             const auto item = createdItem(this->ui->destinationsTable,
-                                          row,
-                                          6,
+                                          row, DestsColumn::Free,
                                           ItemDefaults{}
                                               .use(alignRight)
                                               .use(fixedFont));
@@ -1621,7 +1641,8 @@ void MainWindow::handleGotDestinations(
         {
             const auto status = this->lastStatus;
             const auto mountPoint = mp.value_or("");
-            const auto item = createdItem(this->ui->destinationsTable, row, 7,
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row, DestsColumn::BackupStat,
                                           ItemDefaults{}.use(fixedFont));
             item->setFlags(flags);
             item->setText(textForBackupStatus(status, mountPoint));
