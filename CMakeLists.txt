@@ -39,7 +39,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         plist_builder.h plist_builder.cpp
         pathactiondialog.h pathactiondialog.cpp
         directoryreader.h directoryreader.cpp
-        destinationswidget.h destinationswidget.cpp
+
         plistprocess.h plistprocess.cpp
         settingsdialog.h settingsdialog.cpp
         settings.h settings.cpp
