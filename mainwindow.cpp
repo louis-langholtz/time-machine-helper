@@ -387,23 +387,27 @@ auto duration(const std::optional<std::chrono::microseconds>& t0,
     return {};
 }
 
+auto toMilliseconds(const std::chrono::microseconds t)
+    -> std::chrono::milliseconds
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(t);
+}
+
 auto durationToolTip(const std::optional<std::chrono::microseconds>& t0,
                      const std::optional<std::chrono::microseconds>& t1)
     -> QString
 {
     using namespace std::chrono_literals;
     using namespace std::chrono;
-    const auto minmax = std::minmax(
-        t0? duration_cast<milliseconds>(*t0): 0ms,
-        t1? duration_cast<milliseconds>(*t1): 0ms);
     const auto unknown = QString{"unknown"};
-    const auto minString = (minmax.first > 0ms)
-        ? QDateTime::fromMSecsSinceEpoch(minmax.first.count()).toString()
+    const auto t0String = t0
+        ? QDateTime::fromMSecsSinceEpoch(toMilliseconds(*t0).count()).toString()
         : unknown;
-    const auto maxString = (minmax.second > 0ms)
-        ? QDateTime::fromMSecsSinceEpoch(minmax.second.count()).toString()
+    const auto t1String = t1
+        ? QDateTime::fromMSecsSinceEpoch(toMilliseconds(*t1).count()).toString()
         : unknown;
-    return QString{"%1...%2"}.arg(minString, maxString);
+    return QString{"%1...%2"}.arg(t0String, t1String);
 }
 
 auto firstToLastToolTip(const std::set<QString>& set)
