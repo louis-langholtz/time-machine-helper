@@ -72,6 +72,7 @@ public:
     void updateVolumes(const std::filesystem::path& path,
                        const QMap<QString, QByteArray>& attrs);
     void checkTmStatus();
+    void checkTmDestinations();
     void showStatus(const QString& status);
 
     void addTreeWidgetItem(QTreeWidgetItem *parent,
@@ -85,11 +86,28 @@ private:
     void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
     void handleSudoPathChange(const QString &path);
+
+    void handleGotDestinations(
+        const std::vector<plist_dict>& destinations);
+    void handleGotDestinations(const plist_array &plist);
+    void handleGotDestinations(const plist_dict &plist);
+    void handleTmDestinations(const plist_object &plist);
+    void handleTmDestinationsError(int error, const QString &text);
+    void handleTmDestinationsReaderError(qint64 lineNumber,
+                                         int error,
+                                         const QString& text);
+
+    void handleTmStatus(const plist_object &plist);
     void handleTmStatusNoPlist();
     void handleTmStatusReaderError(qint64 lineNumber,
                                    int error,
                                    const QString& text);
-    void handleTmStatusFinished(int code, int status);
+    void handlePlistProcessFinished(
+        const QString& program,
+        const QStringList& arguments,
+        int code,
+        int status);
+
     void handleItemChanged(QTableWidgetItem *item);
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
@@ -112,6 +130,7 @@ private:
     std::map<std::string, plist_dict> mountMap;
     std::map<QString, MachineInfo> machineMap;
     std::map<std::filesystem::path, PathInfo> pathInfoMap;
+    plist_dict lastStatus;
 };
 
 #endif // MAINWINDOW_H

@@ -25,6 +25,7 @@
 #include <QStyledItemDelegate>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QProgressBar>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -39,6 +40,39 @@
 namespace {
 
 constexpr auto toolName = "Time Machine utility";
+
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto backupPhaseKey = "BackupPhase";
+
+constexpr auto destinationsKey = "Destinations";
+
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto destinationMountPointKey = "DestinationMountPoint";
+
+/// @note Toplevel key within the status plist dictionary.
+constexpr auto destinationIdKey = "DestinationID";
+
+/// @note Toplevel key within the status plist dictionary. Its
+///   entry value is another dictionary with progress related details.
+constexpr auto progressKey = "Progress";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto timeRemainingKey = "TimeRemaining";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto percentKey = "Percent";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto bytesKey = "bytes";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto totalBytesKey = "totalBytes";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto numFilesKey = "files";
+
+/// @note Key within the "Progress" entry's dictionary.
+constexpr auto totalFilesKey = "totalFiles";
 
 constexpr auto timeMachineAttrPrefix = "com.apple.timemachine.";
 constexpr auto backupAttrPrefix = "com.apple.backup.";
@@ -81,9 +115,12 @@ constexpr auto tmutilVerifyVerb     = "verifychecksums";
 constexpr auto tmutilUniqueSizeVerb = "uniquesize";
 constexpr auto tmutilRestoreVerb    = "restore";
 constexpr auto tmutilStatusVerb     = "status";
+constexpr auto tmutilDestInfoVerb   = "destinationinfo";
+constexpr auto tmutilXmlOption      = "-X";
 
 constexpr auto pathInfoUpdateTime = 10000;
 constexpr auto maxToolTipStringList = 10;
+constexpr auto gigabyte = 1000 * 1000 * 1000;
 
 // A namespace scoped enum for the machines table columns...
 namespace MachinesColumn {
@@ -531,6 +568,79 @@ auto erase(std::set<T>& dst, const QSet<T>& src)
     return dst;
 }
 
+auto decodeBackupPhase(const plist_string &name) -> QString
+{
+    if (name == "ThinningPostBackup") {
+        // a.k.a. "Cleaning up"
+        return "Thinning Post Backup";
+    }
+    if (name == "FindingChanges") {
+        return "Finding Changes";
+    }
+    return QString::fromStdString(name);
+}
+
+auto textForBackupStatus(const plist_dict &status, const std::string &mp)
+    -> QString
+{
+    // When running...
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
+    if (destMP && destMP == mp) {
+        auto result = QStringList{};
+        if (const auto v = get<plist_string>(status, backupPhaseKey)) {
+            result << decodeBackupPhase(*v);
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_real>(*prog, percentKey)) {
+                result << QString("%1%")
+                              .arg(QString::number(*v * 100.0, 'f', 1));
+            }
+        }
+        return result.join(' ');
+    }
+    return QString{};
+}
+
+auto secondsToUserTime(plist_real value) -> QString
+{
+    static constexpr auto secondsPerMinutes = 60;
+    return QString("~%1 minutes")
+        .arg(QString::number(value / secondsPerMinutes, 'f', 1));
+}
+
+auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
+    -> QString
+{
+    // When running...
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
+    if (destMP && destMP == mp) {
+        auto result = QStringList{};
+        if (const auto v = get<plist_string>(status, destinationIdKey)) {
+            result << QString("Destination ID: %1.").arg(v->c_str());
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_integer>(*prog, bytesKey)) {
+                result << QString("Number of bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalBytesKey)) {
+                result << QString("Total bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, numFilesKey)) {
+                result << QString("Number of files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalFilesKey)) {
+                result << QString("Total files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_real>(*prog, timeRemainingKey)) {
+                result << QString("Allegedly, %1 remaining.")
+                              .arg(secondsToUserTime(*v));
+            }
+        }
+        return result.join('\n');
+    }
+    return {};
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -558,7 +668,6 @@ MainWindow::MainWindow(QWidget *parent):
     this->tmutilPath = Settings::tmutilPath();
     this->sudoPath = Settings::sudoPath();
 
-    this->ui->destinationsTable->setTmutilPath(this->tmutilPath);
     this->ui->destinationsTable->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::Interactive);
 
@@ -575,17 +684,7 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this->ui->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedBackups);
 
-    connect(this->ui->destinationsTable,
-            &DestinationsWidget::failedToStartQuery,
-            this, &MainWindow::handleQueryFailedToStart);
-    connect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
-            this, &MainWindow::updateMountPointsView);
-    connect(this->ui->destinationsTable, &DestinationsWidget::gotError,
-            this, &MainWindow::showStatus);
-    connect(this->ui->destinationsTable, &DestinationsWidget::gotDestinations,
-            this, &MainWindow::handleGotDestinations);
-
-    connect(this->ui->destinationsTable, &DestinationsWidget::itemChanged,
+    connect(this->ui->destinationsTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleItemChanged);
     connect(this->ui->machinesTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleItemChanged);
@@ -596,15 +695,12 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::selectedBackupsChanged);
 
     connect(this->destinationsTimer, &QTimer::timeout,
-            this->ui->destinationsTable,
-            &DestinationsWidget::queryDestinations);
+            this, &MainWindow::checkTmDestinations);
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
 
     QTimer::singleShot(0, this, &MainWindow::readSettings);
-    QTimer::singleShot(0,
-                       this->ui->destinationsTable,
-                       &DestinationsWidget::queryDestinations);
+    QTimer::singleShot(0, this, &MainWindow::checkTmDestinations);
     QTimer::singleShot(0, this, &MainWindow::checkTmStatus);
 }
 
@@ -618,16 +714,16 @@ void MainWindow::updateMountPointsView(
 {
     this->mountMap = mountPoints;
     if (mountPoints.empty()) {
-        disconnect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
-                   this, &MainWindow::updateMountPointsView);
+        disconnect(this->destinationsTimer, &QTimer::timeout,
+                   this, &MainWindow::checkTmDestinations);
         QMessageBox msgBox;
         msgBox.setIcon(QMessageBox::Critical);
         msgBox.setText("No destination accessible!");
         msgBox.setInformativeText(
             "No backups or restores are possible when no destinations are accessible!");
         msgBox.exec();
-        connect(this->ui->destinationsTable, &DestinationsWidget::gotPaths,
-                this, &MainWindow::updateMountPointsView);
+        connect(this->destinationsTimer, &QTimer::timeout,
+                this, &MainWindow::checkTmDestinations);
         return;
     }
     for (const auto& mountPoint: mountPoints) {
@@ -1284,20 +1380,56 @@ void MainWindow::showSettingsDialog()
 
 void MainWindow::checkTmStatus()
 {
-    // need to call "tmutil status -X"
     auto *process = new PlistProcess{this};
     connect(process, &PlistProcess::gotPlist,
-            this->ui->destinationsTable, &DestinationsWidget::handleStatus);
+            this, &MainWindow::handleTmStatus);
     connect(process, &PlistProcess::gotNoPlist,
             this, &MainWindow::handleTmStatusNoPlist);
     connect(process, &PlistProcess::gotReaderError,
             this, &MainWindow::handleTmStatusReaderError);
     connect(process, &PlistProcess::finished,
-            this, &MainWindow::handleTmStatusFinished);
+            this, &MainWindow::handlePlistProcessFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmutilPath,
-                   QStringList() << tmutilStatusVerb << "-X");
+                   QStringList() << tmutilStatusVerb
+                                 << tmutilXmlOption);
+}
+
+void MainWindow::checkTmDestinations()
+{
+    auto process = new PlistProcess(this);
+    connect(process, &PlistProcess::gotPlist,
+            this, &MainWindow::handleTmDestinations);
+    connect(process, &PlistProcess::errorOccurred,
+            this, &MainWindow::handleTmDestinationsError);
+    connect(process, &PlistProcess::gotReaderError,
+            this, &MainWindow::handleTmDestinationsReaderError);
+    connect(process, &PlistProcess::finished,
+            this, &MainWindow::handlePlistProcessFinished);
+    connect(process, &PlistProcess::finished,
+            process, &PlistProcess::deleteLater);
+    process->start(this->tmutilPath,
+                   QStringList() << tmutilDestInfoVerb
+                                 << tmutilXmlOption);
+}
+
+void MainWindow::handleTmDestinationsError(int error, const QString &text)
+{
+    qDebug() << "handleErrorOccurred:"
+             << error << text;
+    switch (QProcess::ProcessError(error)) {
+    case QProcess::FailedToStart:{
+        handleQueryFailedToStart(text);
+        break;
+    }
+    case QProcess::Crashed:
+    case QProcess::Timedout:
+    case QProcess::ReadError:
+    case QProcess::WriteError:
+    case QProcess::UnknownError:
+        break;
+    }
 }
 
 void MainWindow::showStatus(const QString& status)
@@ -1310,10 +1442,9 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     qDebug() << "MainWindow::handleQueryFailedToStart called:"
              << text;
     disconnect(this->destinationsTimer, &QTimer::timeout,
-               this->ui->destinationsTable,
-               &DestinationsWidget::queryDestinations);
+               this, &MainWindow::checkTmDestinations);
     constexpr auto queryFailedMsg = "Unable to start destinations query";
-    const auto tmutilPath = this->ui->destinationsTable->tmutilPath();
+    const auto tmutilPath = this->tmutilPath;
     const auto info = QFileInfo(tmutilPath);
     QMessageBox msgBox;
     msgBox.setStandardButtons(QMessageBox::Open);
@@ -1366,21 +1497,7 @@ void MainWindow::handleTmutilPathChange(const QString &path)
 {
     qDebug() << "MainWindow::handleTmutilPathChange called:"
              << path;
-
-    disconnect(this->statusTimer, &QTimer::timeout,
-               this, &MainWindow::checkTmStatus);
-    disconnect(this->destinationsTimer, &QTimer::timeout,
-               this->ui->destinationsTable,
-               &DestinationsWidget::queryDestinations);
-
     this->tmutilPath = path;
-    this->ui->destinationsTable->setTmutilPath(path);
-
-    connect(this->statusTimer, &QTimer::timeout,
-            this, &MainWindow::checkTmStatus);
-    connect(this->destinationsTimer, &QTimer::timeout,
-            this->ui->destinationsTable,
-            &DestinationsWidget::queryDestinations);
 }
 
 void MainWindow::handleSudoPathChange(const QString &path)
@@ -1388,6 +1505,206 @@ void MainWindow::handleSudoPathChange(const QString &path)
     qDebug() << "MainWindow::handleSudoPathChange called:"
              << path;
     this->sudoPath = path;
+}
+
+void MainWindow::handleGotDestinations(
+    const std::vector<plist_dict>& destinations)
+{
+    constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
+    const auto fixedFont =
+        QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const auto smallFont =
+        QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
+    auto mountPoints = std::map<std::string, plist_dict>{};
+    auto row = 0;
+    const auto rowCount = int(destinations.size());
+    const SortingDisabler disableSort{this->ui->destinationsTable};
+    this->ui->destinationsTable->setRowCount(rowCount);
+    handleGotDestinations(rowCount);
+    if (rowCount == 0) {
+        return;
+    }
+    for (const auto& d: destinations) {
+        const auto mp = get<std::string>(d, "MountPoint");
+        const auto id = get<std::string>(d, "ID");
+        auto ec = std::error_code{};
+        const auto si = mp
+                            ? std::filesystem::space(*mp, ec)
+                            : std::filesystem::space_info{};
+        const auto flags =
+            Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
+        auto checked = false;
+        {
+            const auto on = std::optional<bool>{mp && !ec};
+            const auto item = createdItem(this->ui->destinationsTable, row, 0,
+                                          ItemDefaults{}.use(on));
+            item->setFlags(flags|Qt::ItemIsUserCheckable);
+            item->setText(QString::fromStdString(
+                get<std::string>(d, "Name").value_or("")));
+            item->setToolTip("Backup disk a.k.a. backup destination.");
+            checked = item->checkState() == Qt::CheckState::Checked;
+        }
+        {
+            const auto item = createdItem(this->ui->destinationsTable, row, 1,
+                                          ItemDefaults{}.use(fixedFont));
+            item->setFlags(flags);
+            item->setText(QString::fromStdString(id.value_or("")));
+        }
+        {
+            const auto item = createdItem(this->ui->destinationsTable, row, 2);
+            item->setFlags(flags);
+            item->setText(QString::fromStdString(
+                get<std::string>(d, "Kind").value_or("")));
+        }
+        {
+            constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
+            const auto item = createdItem(this->ui->destinationsTable, row, 3,
+                                          ItemDefaults{}.use(align).use(fixedFont));
+            item->setFlags(flags);
+            item->setText(QString::fromStdString(mp.value_or("")));
+        }
+        {
+            const auto used = si.capacity - si.free;
+            const auto percentUsage = (si.capacity != 0u)
+                                          ? static_cast<int>((double(used) / double(si.capacity)) * 100.0)
+                                          : 0;
+            auto widget = new QProgressBar{this->ui->destinationsTable};
+            widget->setOrientation(Qt::Horizontal);
+            constexpr auto percentMin = 0;
+            constexpr auto percentMax = 100;
+            widget->setRange(percentMin, percentMax);
+            widget->setValue(percentUsage);
+            widget->setTextVisible(true);
+            widget->setAlignment(Qt::AlignTop);
+            widget->setToolTip(QString("Used %1% (%2b of %3b with %4b remaining).")
+                                   .arg(percentUsage)
+                                   .arg(used)
+                                   .arg(si.capacity)
+                                   .arg(si.free));
+            this->ui->destinationsTable->setCellWidget(row, 4, widget);
+
+            const auto align = Qt::AlignRight|Qt::AlignBottom;
+            const auto text = (mp && !ec)
+                                  ? QString("%1%").arg(percentUsage)
+                                  : QString{};
+            const auto item = createdItem(this->ui->destinationsTable, row, 4,
+                                          ItemDefaults{}.use(align)
+                                              .use(smallFont));
+            item->setFlags(flags);
+            item->setText(text);
+        }
+        {
+            const auto item = createdItem(this->ui->destinationsTable, row, 5,
+                                          ItemDefaults{}.use(alignRight)
+                                              .use(fixedFont));
+            item->setFlags(flags);
+            if (mp && !ec) {
+                item->setData(Qt::EditRole, double(si.capacity) / gigabyte);
+            }
+            else {
+                item->setText(QString{});
+            }
+        }
+        {
+            const auto item = createdItem(this->ui->destinationsTable,
+                                          row,
+                                          6,
+                                          ItemDefaults{}
+                                              .use(alignRight)
+                                              .use(fixedFont));
+            item->setFlags(flags);
+            if (mp && !ec) {
+                item->setData(Qt::EditRole, double(si.free) / gigabyte);
+            }
+            else {
+                item->setText(QString{});
+            }
+        }
+        {
+            const auto status = this->lastStatus;
+            const auto mountPoint = mp.value_or("");
+            const auto item = createdItem(this->ui->destinationsTable, row, 7,
+                                          ItemDefaults{}.use(fixedFont));
+            item->setFlags(flags);
+            item->setText(textForBackupStatus(status, mountPoint));
+            item->setToolTip(toolTipForBackupStatus(status, mountPoint));
+        }
+        if (mp) {
+            mountPoints.emplace(*mp, d);
+        }
+        ++row;
+    }
+    this->updateMountPointsView(mountPoints);
+}
+
+void MainWindow::handleGotDestinations(const plist_array &plist)
+{
+    auto destinations = std::vector<plist_dict>{};
+    for (const auto& element: plist) {
+        const auto p = std::get_if<plist_dict>(&element.value);
+        if (!p) {
+            this->showStatus(
+                QString("Unexpected type of element %1 in '%2' key entry array!")
+                    .arg(&element - plist.data())
+                    .arg(destinationsKey));
+            continue;
+        }
+        destinations.push_back(*p);
+    }
+    handleGotDestinations(destinations);
+}
+
+void MainWindow::handleGotDestinations(const plist_dict &plist)
+{
+    const auto it = plist.find(destinationsKey);
+    if (it == plist.end()) {
+        qWarning() << QString("'%1' key entry not found!")
+                          .arg(destinationsKey);
+        return;
+    }
+    const auto p = std::get_if<plist_array>(&(it->second.value));
+    if (!p) {
+        qWarning() << QString("'%1' key entry not array - entry index is %2!")
+                .arg(destinationsKey)
+                .arg(it->second.value.index());
+        return;
+    }
+    handleGotDestinations(*p);
+}
+
+void MainWindow::handleTmDestinations(const plist_object &plist)
+{
+    const auto *dict = std::get_if<plist_dict>(&plist.value);
+    if (!dict) {
+        qWarning() << "handleTmDestinations: plist value not dict!";
+        return;
+    }
+    return this->handleGotDestinations(*dict);
+}
+
+void MainWindow::handleTmStatus(const plist_object &plist)
+{
+    // display plist output from "tmutil status -X"
+    const auto *dict = std::get_if<plist_dict>(&plist.value);
+    if (!dict) {
+        qWarning() << "handleTmStatus: plist value not dict!";
+        return;
+    }
+    this->lastStatus = *dict;
+    const auto rows = this->ui->destinationsTable->rowCount();
+    for (auto row = 0; row < rows; ++row) {
+        const auto mpItem = this->ui->destinationsTable->item(row, 3);
+        if (!mpItem) {
+            continue;
+        }
+        const auto stItem = this->ui->destinationsTable->item(row, 7);
+        if (!stItem) {
+            continue;
+        }
+        const auto mountPoint = mpItem->text().toStdString();
+        stItem->setText(textForBackupStatus(*dict, mountPoint));
+        stItem->setToolTip(toolTipForBackupStatus(*dict, mountPoint));
+    }
 }
 
 void MainWindow::handleTmStatusNoPlist()
@@ -1412,6 +1729,18 @@ void MainWindow::handleTmStatusNoPlist()
     }
 }
 
+void MainWindow::handleTmDestinationsReaderError(
+    qint64 lineNumber, int error, const QString &text)
+{
+    qDebug() << "handleTmDestinationsReaderError called:" << text;
+    qDebug() << "line #" << lineNumber;
+    qDebug() << "error" << error;
+    this->showStatus(
+        QString("Error reading Time Machine destinations: line %1, %2")
+            .arg(lineNumber)
+            .arg(text));
+}
+
 void MainWindow::handleTmStatusReaderError(
     qint64 lineNumber, int error, const QString &text)
 {
@@ -1424,21 +1753,23 @@ void MainWindow::handleTmStatusReaderError(
             .arg(text));
 }
 
-void MainWindow::handleTmStatusFinished(int code, int status)
+void MainWindow::handlePlistProcessFinished(
+    const QString& program,
+    const QStringList&,
+    int code,
+    int status)
 {
     switch (QProcess::ExitStatus(status)) {
     case QProcess::NormalExit:
         break;
     case QProcess::CrashExit:
-        this->showStatus(
-            QString("When getting status: %1 exited abnormally")
-                .arg(toolName));
+        this->showStatus(QString("%1 exited abnormally")
+                             .arg(program));
         return;
     }
     if (code != 0) {
-        this->showStatus(
-            QString("When getting status: %1 exited with code %2")
-                .arg(toolName).arg(code));
+        this->showStatus(QString("%1 exited with code %2")
+                             .arg(program).arg(code));
     }
 }
 

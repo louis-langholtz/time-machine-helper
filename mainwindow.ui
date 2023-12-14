@@ -34,7 +34,7 @@
        </widget>
       </item>
       <item>
-       <widget class="DestinationsWidget" name="destinationsTable">
+       <widget class="QTableWidget" name="destinationsTable">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -98,7 +98,7 @@
           <string>Capacity</string>
          </property>
          <property name="toolTip">
-          <string>Capacity of the volume.</string>
+          <string>Capacity of the destination.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -109,7 +109,7 @@
           <string>Free</string>
          </property>
          <property name="toolTip">
-          <string>Free space within the volume.</string>
+          <string>Free space within the destination.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -120,7 +120,7 @@
           <string>Backup Status</string>
          </property>
          <property name="toolTip">
-          <string>Backup phase &amp; more when backup running</string>
+          <string>Backup phase &amp; more when backup running.</string>
          </property>
         </column>
        </widget>
@@ -563,13 +563,6 @@
    </property>
   </action>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>DestinationsWidget</class>
-   <extends>QTableWidget</extends>
-   <header>destinationswidget.h</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -111,7 +111,9 @@ void PlistProcess::handleProcessFinished(int code, int status)
     else {
         emit gotNoPlist();
     }
-    emit finished(code, status);
+    const auto program = this->process? this->process->program(): QString{};
+    const auto arguments = this->process? this->process->arguments(): QStringList{};
+    emit finished(program, arguments, code, status);
 }
 
 void PlistProcess::readMore()

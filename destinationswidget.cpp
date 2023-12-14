@@ -266,7 +266,11 @@ void DestinationsWidget::handleErrorOccurred(int error, const QString &text)
     }
 }
 
-void DestinationsWidget::handleQueryFinished(int code, int status)
+void DestinationsWidget::handleQueryFinished(
+    const QString&,
+    const QStringList&,
+    int code,
+    int status)
 {
     if (status == QProcess::ExitStatus::CrashExit) {
         const auto text =

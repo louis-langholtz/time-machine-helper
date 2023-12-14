@@ -40,7 +40,10 @@ private:
     void handleReaderError(qint64 lineNumber, int error,
                            const QString& text);
     void handleErrorOccurred(int error, const QString& text);
-    void handleQueryFinished(int code, int status);
+    void handleQueryFinished(const QString& program,
+                             const QStringList& arguments,
+                             int code,
+                             int status);
 
     // Private regular functions...
     void update(const std::vector<plist_dict>& destinations);

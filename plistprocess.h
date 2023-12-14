@@ -73,7 +73,10 @@ signals:
     ///   underlying process has finished.
     /// @param code Code that program returned on normal exit.
     /// @param status A @c QProcess::ExitStatus value.
-    void finished(int code, int status);
+    void finished(const QString& program,
+                  const QStringList& arguments,
+                  int code,
+                  int status);
 
 private:
     void handleStarted();
