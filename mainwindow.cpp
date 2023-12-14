@@ -963,7 +963,7 @@ void MainWindow::updateMachines(
     if (foundRow < 0) {
         tbl->insertRow(row);
     }
-    constexpr auto checked = std::optional<bool>{true};
+    constexpr auto checked = std::optional<Qt::CheckState>{Qt::CheckState::Checked};
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     const auto flags = Qt::ItemFlags{Qt::ItemIsEnabled};
     const auto opts = ItemDefaults{}.use(flags);
@@ -1114,7 +1114,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     constexpr auto flags = Qt::ItemFlags{Qt::ItemIsEnabled};
-    constexpr auto checked = std::optional<bool>{true};
+    constexpr auto checked = std::optional<Qt::CheckState>{Qt::Checked};
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     constexpr auto alignLeft = Qt::AlignLeft|Qt::AlignVCenter;
     const auto foundRow = findRow(*tbl, {{VolumesColumn::Name, volumeName},
@@ -1534,7 +1534,7 @@ void MainWindow::handleGotDestinations(
         const auto flags =
             Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
         {
-            const auto on = std::optional<bool>{mp && !ec};
+            const auto on = std::optional<Qt::CheckState>{(mp && !ec)? Qt::Checked: Qt::Unchecked};
             const auto item = createdItem(this->ui->destinationsTable, row, 0,
                                           ItemDefaults{}.use(on));
             item->setFlags(flags|Qt::ItemIsUserCheckable);
@@ -1779,46 +1779,6 @@ void MainWindow::handleItemChanged(QTableWidgetItem *)
         checkedTextStrings(*this->ui->machinesTable, MachinesColumn::Name);
     const auto showVols =
         checkedTextStrings(*this->ui->volumesTable, VolumesColumn::Name);
-    {
-        const auto tbl = this->ui->machinesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            auto hide = false;
-            if (const auto item = tbl->item(row, MachinesColumn::Destinations)) {
-                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
-                const auto it = std::find_first_of(set.begin(), set.end(),
-                                                   showDests.begin(), showDests.end());
-                hide |= (it == set.end());
-            }
-            if (const auto item = tbl->item(row, MachinesColumn::Volumes)) {
-                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
-                const auto it = std::find_first_of(set.begin(), set.end(),
-                                                   showVols.begin(), showVols.end());
-                hide |= (it == set.end());
-            }
-            tbl->setRowHidden(row, hide);
-        }
-    }
-    {
-        const auto tbl = this->ui->volumesTable;
-        const auto count = tbl->rowCount();
-        for (auto row = 0; row < count; ++row) {
-            auto hide = false;
-            if (const auto item = tbl->item(row, VolumesColumn::Destinations)) {
-                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
-                const auto it = std::find_first_of(set.begin(), set.end(),
-                                                   showDests.begin(), showDests.end());
-                hide |= (it == set.end());
-            }
-            if (const auto item = tbl->item(row, VolumesColumn::Machines)) {
-                const auto set = item->data(Qt::UserRole).value<std::set<QString>>();
-                const auto it = std::find_first_of(set.begin(), set.end(),
-                                                   showMachs.begin(), showMachs.end());
-                hide |= (it == set.end());
-            }
-            tbl->setRowHidden(row, hide);
-        }
-    }
     {
         const auto tbl = this->ui->backupsTable;
         const auto count = tbl->rowCount();

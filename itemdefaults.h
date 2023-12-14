@@ -9,7 +9,7 @@ struct ItemDefaults {
     Qt::ItemFlags flags{Qt::ItemIsEnabled};
     Qt::Alignment alignment{Qt::AlignCenter};
     std::optional<QFont> font{};
-    std::optional<bool> checked{};
+    std::optional<Qt::CheckState> checked{};
     std::optional<QString> text_{};
 
     constexpr auto use(const Qt::ItemFlags &v)
@@ -33,7 +33,7 @@ struct ItemDefaults {
         return *this;
     }
 
-    constexpr auto use(const std::optional<bool> &v)
+    constexpr auto use(const std::optional<Qt::CheckState> &v)
         -> ItemDefaults&
     {
         this->checked = v;

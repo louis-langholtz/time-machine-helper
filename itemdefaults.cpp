@@ -14,9 +14,7 @@ auto createdItem(QTableWidget* parent,
             item->setFont(*defaults.font);
         }
         if (defaults.checked) {
-            item->setCheckState(*(defaults.checked)
-                                    ? Qt::CheckState::Checked
-                                    : Qt::CheckState::Unchecked);
+            item->setCheckState(*defaults.checked);
         }
         if (defaults.text_) {
             item->setText(*defaults.text_);
