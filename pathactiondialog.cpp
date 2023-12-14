@@ -162,8 +162,12 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->outputWidget->setObjectName("outputWidget");
     this->outputWidget->setLineWrapMode(QTextEdit::NoWrap);
     this->outputWidget->setReadOnly(true);
-    this->outputWidget->document()->setDefaultStyleSheet(
-        "* {font-family: \"Andale Mono\";} .stdout {color:green;} .stderr {color:red;}");
+    const auto fixedFontInfo =
+        QFontInfo(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    const auto styleSheet =
+        QString{"* {font-family: %1; font-size: %2px;} .stdout {color:green;} .stderr {color:red;"}
+                                .arg(fixedFontInfo.family()).arg(fixedFontInfo.pixelSize());
+    this->outputWidget->document()->setDefaultStyleSheet(styleSheet);
     this->outputWidget->setMinimumHeight(0);
     this->outputWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     this->outputWidget->setSizePolicy(
