@@ -1533,7 +1533,6 @@ void MainWindow::handleGotDestinations(
                             : std::filesystem::space_info{};
         const auto flags =
             Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
-        auto checked = false;
         {
             const auto on = std::optional<bool>{mp && !ec};
             const auto item = createdItem(this->ui->destinationsTable, row, 0,
@@ -1542,7 +1541,6 @@ void MainWindow::handleGotDestinations(
             item->setText(QString::fromStdString(
                 get<std::string>(d, "Name").value_or("")));
             item->setToolTip("Backup disk a.k.a. backup destination.");
-            checked = item->checkState() == Qt::CheckState::Checked;
         }
         {
             const auto item = createdItem(this->ui->destinationsTable, row, 1,

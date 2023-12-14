@@ -8,6 +8,6 @@
 
 Q_DECLARE_METATYPE(std::chrono::seconds); // NOLINT(modernize-use-trailing-return-type)
 
-auto toString(std::chrono::seconds time) -> QString;
+auto toString(std::chrono::seconds value) -> QString;
 
 #endif // SECONDS_H
