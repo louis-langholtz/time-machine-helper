@@ -1491,22 +1491,6 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
     }
 }
 
-void MainWindow::handleGotDestinations(int count)
-{
-    if (count == 0) {
-        this->ui->destinationsLabel->setText(
-            tr("Destinations - none appear setup!"));
-        errorMessage.showMessage(
-            QString("%1 %2")
-                .arg("No destinations appear setup.",
-                     "Add a destination to Time Machine as soon as you can."));
-    }
-    else {
-        this->ui->destinationsLabel->setText(
-            tr("Destinations"));
-    }
-}
-
 void MainWindow::handleTmutilPathChange(const QString &path)
 {
     qDebug() << "MainWindow::handleTmutilPathChange called:"
@@ -1524,23 +1508,28 @@ void MainWindow::handleSudoPathChange(const QString &path)
 void MainWindow::handleGotDestinations(
     const std::vector<plist_dict>& destinations)
 {
+    const auto rowCount = int(destinations.size());
+    const SortingDisabler disableSort{this->ui->destinationsTable};
+    this->ui->destinationsTable->setRowCount(rowCount);
+    if (rowCount == 0) {
+        this->ui->destinationsLabel->setText(tr("Destinations - none appear setup!"));
+        this->errorMessage.showMessage(
+            QString("%1 %2")
+                .arg("No destinations appear setup.",
+                     "Add a destination to Time Machine as soon as you can."));
+        return;
+    }
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
     const auto fixedFont =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     const auto smallFont =
         QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
+    this->ui->destinationsLabel->setText(tr("Destinations"));
     auto mountPoints = std::map<std::string, plist_dict>{};
     auto row = 0;
-    const auto rowCount = int(destinations.size());
-    const SortingDisabler disableSort{this->ui->destinationsTable};
-    this->ui->destinationsTable->setRowCount(rowCount);
-    handleGotDestinations(rowCount);
-    if (rowCount == 0) {
-        return;
-    }
-    for (const auto& d: destinations) {
-        const auto mp = get<std::string>(d, "MountPoint");
-        const auto id = get<std::string>(d, "ID");
+    for (const auto& destination: destinations) {
+        const auto mp = get<std::string>(destination, "MountPoint");
+        const auto id = get<std::string>(destination, "ID");
         auto ec = std::error_code{};
         const auto si = mp
                             ? std::filesystem::space(*mp, ec)
@@ -1555,7 +1544,7 @@ void MainWindow::handleGotDestinations(
                                           ItemDefaults{}.use(on));
             item->setFlags(flags|Qt::ItemIsUserCheckable);
             item->setText(QString::fromStdString(
-                get<std::string>(d, "Name").value_or("")));
+                get<std::string>(destination, "Name").value_or("")));
             item->setToolTip("Backup disk a.k.a. backup destination.");
         }
         {
@@ -1569,7 +1558,7 @@ void MainWindow::handleGotDestinations(
             const auto item = createdItem(this->ui->destinationsTable, row, DestsColumn::Kind);
             item->setFlags(flags);
             item->setText(QString::fromStdString(
-                get<std::string>(d, "Kind").value_or("")));
+                get<std::string>(destination, "Kind").value_or("")));
         }
         {
             constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
@@ -1649,7 +1638,7 @@ void MainWindow::handleGotDestinations(
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
         if (mp) {
-            mountPoints.emplace(*mp, d);
+            mountPoints.emplace(*mp, destination);
         }
         ++row;
     }

@@ -82,7 +82,6 @@ public:
 private:
     void selectedBackupsChanged();
     void handleQueryFailedToStart(const QString &text);
-    void handleGotDestinations(int count);
     void handleTmutilPathChange(const QString &path);
     void handleSudoPathChange(const QString &path);
 
