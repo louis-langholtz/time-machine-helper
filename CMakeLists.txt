@@ -39,15 +39,14 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         plist_builder.h plist_builder.cpp
         pathactiondialog.h pathactiondialog.cpp
         directoryreader.h directoryreader.cpp
-
         plistprocess.h plistprocess.cpp
         settingsdialog.h settingsdialog.cpp
         settings.h settings.cpp
         ${app_icon_macos}
+        application.qrc
         itemdefaults.h itemdefaults.cpp
         sortingdisabler.h
         seconds.h seconds.cpp
-
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET time-machine-helper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -72,10 +71,12 @@ set(COPYRIGHT "© 2023 Louis Langholtz")
 target_include_directories(time-machine-helper PUBLIC
     ${PROJECT_SOURCE_DIR})
 
+string(TIMESTAMP BUILD_TIMESTAMP UTC)
 target_compile_definitions(time-machine-helper PUBLIC
     VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
     VERSION_MINOR=${PROJECT_VERSION_MINOR}
     COPYRIGHT="${COPYRIGHT}"
+    BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
 )
 
 target_link_libraries(time-machine-helper PRIVATE

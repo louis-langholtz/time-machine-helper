@@ -655,6 +655,39 @@ auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
     return {};
 }
 
+auto createAboutDialog(QWidget *parent)
+    -> QMessageBox*
+{
+    auto *dialog = new QMessageBox(parent);
+    dialog->setStandardButtons(QMessageBox::Close);
+    dialog->setWindowTitle("About");
+    dialog->setOptions(QMessageBox::Option::DontUseNativeDialog);
+    dialog->setWindowFlags(dialog->windowFlags()|
+                           Qt::WindowTitleHint|Qt::WindowSystemMenuHint);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setIconPixmap(QPixmap{":/resources/icon_128x128.png"});
+    dialog->setModal(false);
+    dialog->setTextFormat(Qt::TextFormat::MarkdownText);
+    QString text;
+    text.append(QString("## %1 %2.%3")
+                    .arg(parent->windowTitle())
+                    .arg(VERSION_MAJOR)
+                    .arg(VERSION_MINOR));
+    text.append("\n\n");
+    text.append(QString("Built on %1.").arg(BUILD_TIMESTAMP));
+    text.append("\n\n");
+    text.append(QString("Source code available from [GitHub](%1).")
+                    .arg("https://github.com/louis-langholtz/time-machine-helper"));
+    text.append("\n\n");
+    text.append(QString("Copyright %1.").arg(COPYRIGHT));
+    text.append("\n\n");
+    text.append(QString("Compiled with Qt version %1. Running with Qt version %2.")
+                    .arg(QT_VERSION_STR, qVersion()));
+    dialog->setStyleSheet("QMessageBox QLabel {font-weight: normal;}");
+    dialog->setText(text);
+    return dialog;
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -770,7 +803,7 @@ void MainWindow::handleDirectoryReaderEnded(
     // Following doesn't work on macos?
     msgBox.setTextFormat(Qt::TextFormat::MarkdownText);
     msgBox.setWindowTitle("Error!");
-    msgBox.setText(QString("Unable to list contents of directory `%1`")
+    msgBox.setText(QString("Unable to list contents of directory:\n\n`%1`")
                        .arg(QString::fromStdString(dir.string())));
     msgBox.setDetailedText(QString("Reason: %2")
                                .arg(QString::fromStdString(ec.message())));
@@ -780,7 +813,7 @@ void MainWindow::handleDirectoryReaderEnded(
             std::filesystem::path(appPath.toStdString()).filename();
         auto infoText = QString("Is macOS *%1* perhaps not enabled for '%2'?")
                             .arg(fullDiskAccessStr, fileName.c_str());
-        infoText.append(QString("\nTo check, choose Apple menu  > %1 > %2 > %3")
+        infoText.append(QString(" To check, choose Apple menu  > %1 > %2 > %3")
                             .arg(systemSettingsStr,
                                  privacySecurityStr,
                                  fullDiskAccessStr));
@@ -1356,20 +1389,15 @@ void MainWindow::selectedBackupsChanged()
 
 void MainWindow::showAboutDialog()
 {
-    QString text;
-    text.append(QString("%1 %2.%3")
-                    .arg(this->windowTitle())
-                    .arg(VERSION_MAJOR)
-                    .arg(VERSION_MINOR));
-    text.append("\n\n");
-    text.append(QString("Copyright %1").arg(COPYRIGHT));
-    text.append("\n\n");
-    text.append(QString("Source code available at:\n%1")
-                    .arg("https://github.com/louis-langholtz/time-machine-helper"));
-    text.append("\n\n");
-    text.append(QString("Compiled with Qt version %1.\nRunning with Qt version %2.")
-                    .arg(QT_VERSION_STR, qVersion()));
-    QMessageBox::about(this, tr("About"), text);
+    static QPointer<QMessageBox> dialog;
+    if (dialog) {
+        dialog->show();
+        dialog->raise();
+        dialog->activateWindow();
+        return;
+    }
+    dialog = createAboutDialog(this);
+    dialog->show();
 }
 
 void MainWindow::showSettingsDialog()
