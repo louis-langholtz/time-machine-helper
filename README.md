@@ -10,12 +10,14 @@ This is a macOS specific application.
 ![Time Machine Helper App](screenshot-app.png)
 
 - [x] Monitoring of destinations configured for use with Time Machine.
-- [x] Backup status monitoring showing backup phase, percentage completion, and more.
-- [x] Inspection of mount point paths, their _backup stores_, _machine directories_, _backups_, _volume stores_, and their directories and files, showing snapshot types, copied sizes, file system types, and volume used data sizes.
-- [x] Deletion of _backups_, an administrative action.
-- [x] "Uniquely sizing" paths.
-- [x] Verifying paths.
-- [x] Restoring from paths.
+- [x] Monitoring of backup status showing backup phase, percentage completion, and more.
+- [x] Tabularization of destinations, source machines, source volumes, and backups.
+- [x] Checkbox selectivity of backups to show by destinations, machines, or volumes.
+- [x] Configurability and persistence of settings.
+- [x] Deletion of backups, an administrative action.
+- [x] Verification of backups.
+- [x] "Uniquely sizing" backups, their volumes, or their volumes' contained paths.
+- [x] Restoring from backups, their volumes, or their volumes' contained paths.
 
 ## Prerequisites
 
@@ -32,13 +34,13 @@ So, this project's continuous integration setup is disabled for now and shows up
 
 ## Configure
 
-If Qt is not in a standard, system installed location, specify where to find Qt with the following setting in front of the usual cmake configuration arguments, for example:
+If Qt is not in a standard, system installed location, specify where to find Qt with the following setting in front of the usual CMake configuration arguments, for example:
 
 ```sh
 CMAKE_PREFIX_PATH=./Qt/6.6.0/macos/lib/cmake
 ```
 
-The usual cmake configuration arguments, are:
+The usual CMake configuration arguments, are:
 
 ```sh
 cmake -S time-machine-helper -B time-machine-helper-build
@@ -68,7 +70,7 @@ To do so, go into **System Settings > Privacy & Security > Full Disk Access** an
 
 To use administrative commands of the helper, like to delete backups, the user must be allowed to administer the computer.
 More specifically, the user needs to be able to use the `sudo` command, at least to run the `tmutil` program.
-If the user is not setup in the configuration of `sudo` (in its `sudo.conf` file for example) to run `tmutil` as root without a password, then the helper will have the user decide wether to enter their password through an external application (via `sudo`'s `SUDO_ASKPASS` mechanism), or to be prompted by the helper for their password.
+If the user is not setup in the configuration of `sudo` (in its `sudo.conf` file for example) to run `tmutil` as root without a password, then the helper will have the user decide whether to enter their password through an external application (via `sudo`'s `SUDO_ASKPASS` mechanism), or to be prompted by the helper for their password.
 
 For more info on `sudo`, see:
 
