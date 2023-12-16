@@ -26,6 +26,7 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QProgressBar>
+#include <QDateTime>
 
 #include "ui_mainwindow.h"
 #include "directoryreader.h"
@@ -51,6 +52,8 @@ constexpr auto destinationMountPointKey = "DestinationMountPoint";
 
 /// @note Toplevel key within the status plist dictionary.
 constexpr auto destinationIdKey = "DestinationID";
+
+constexpr auto dateStateChangeKey = "DateOfStateChange";
 
 /// @note Toplevel key within the status plist dictionary. Its
 ///   entry value is another dictionary with progress related details.
@@ -637,6 +640,10 @@ auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
     const auto destMP = get<plist_string>(status, destinationMountPointKey);
     if (destMP && destMP == mp) {
         auto result = QStringList{};
+        if (const auto v = get<plist_date>(status, dateStateChangeKey)) {
+            result << QString("Since: %1...").arg(QDateTime::fromSecsSinceEpoch(
+                std::chrono::system_clock::to_time_t(*v)).toString());
+        }
         if (const auto v = get<plist_string>(status, destinationIdKey)) {
             result << QString("Destination ID: %1.").arg(v->c_str());
         }
