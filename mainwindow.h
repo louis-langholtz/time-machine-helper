@@ -18,6 +18,7 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+class QTableWidget;
 class QTableWidgetItem;
 class QTreeWidgetItem;
 class QTimer;
@@ -105,6 +106,8 @@ private:
         const QStringList& arguments,
         int code,
         int status);
+    void handleDestinationAction(const QString& actionName,
+                                 const std::string& destId);
 
     void handleItemChanged(QTableWidgetItem *item);
     void changeTmutilStatusInterval(int msecs);

@@ -132,6 +132,7 @@ enum Enum: int {
     Use,
     Capacity,
     Free,
+    Action,
     BackupStat,
 };
 }
@@ -594,7 +595,7 @@ auto decodeBackupPhase(const plist_string &name) -> QString
     return QString::fromStdString(name);
 }
 
-auto textForBackupStatus(const plist_dict &status, const std::string &mp)
+auto textForDestBackupStat(const plist_dict &status, const std::string &mp)
     -> QString
 {
     // When running...
@@ -613,6 +614,13 @@ auto textForBackupStatus(const plist_dict &status, const std::string &mp)
         return result.join(' ');
     }
     return QString{};
+}
+
+auto textForDestAction(const plist_dict &status, const std::string &mp)
+    -> QString
+{
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
+    return (destMP && destMP == mp) ? "Stop": "Start";
 }
 
 auto secondsToUserTime(plist_real value) -> QString
@@ -686,6 +694,26 @@ auto createAboutDialog(QWidget *parent)
     dialog->setStyleSheet("QMessageBox QLabel {font-weight: normal;}");
     dialog->setText(text);
     return dialog;
+}
+
+auto createdPushButton(QTableWidget* parent,
+                       int row, int column,
+                       const QString& text,
+                       const std::function<void(QPushButton *pb)> &functor)
+    -> QPushButton*
+{
+    auto result = qobject_cast<QPushButton*>(
+        parent->cellWidget(row, DestsColumn::Action));
+    if (!result) {
+        result = new QPushButton(text, parent);
+        result->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        parent->setCellWidget(row, column, result);
+        QObject::connect(result, &QPushButton::released,
+                         parent, [functor,result](){
+            functor(result);
+        });
+    }
+    return result;
 }
 
 }
@@ -1537,8 +1565,9 @@ void MainWindow::handleGotDestinations(
     const std::vector<plist_dict>& destinations)
 {
     const auto rowCount = int(destinations.size());
-    const SortingDisabler disableSort{this->ui->destinationsTable};
-    this->ui->destinationsTable->setRowCount(rowCount);
+    const auto tbl = this->ui->destinationsTable;
+    const SortingDisabler disableSort{tbl};
+    tbl->setRowCount(rowCount);
     if (rowCount == 0) {
         this->ui->destinationsLabel->setText(tr("Destinations - none appear setup!"));
         this->errorMessage.showMessage(
@@ -1548,6 +1577,7 @@ void MainWindow::handleGotDestinations(
         return;
     }
     constexpr auto alignRight = Qt::AlignRight|Qt::AlignVCenter;
+    constexpr auto alignLeft = Qt::AlignLeft|Qt::AlignVCenter;
     const auto fixedFont =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     const auto smallFont =
@@ -1567,7 +1597,7 @@ void MainWindow::handleGotDestinations(
         {
             const auto on = std::optional<Qt::CheckState>{
                 (mp && !ec)? Qt::Checked: Qt::Unchecked};
-            const auto item = createdItem(this->ui->destinationsTable,
+            const auto item = createdItem(tbl,
                                           row, DestsColumn::Name,
                                           ItemDefaults{}.use(on));
             item->setFlags(flags|Qt::ItemIsUserCheckable);
@@ -1575,24 +1605,20 @@ void MainWindow::handleGotDestinations(
                 get<std::string>(destination, "Name").value_or("")));
             item->setToolTip("Backup disk a.k.a. backup destination.");
         }
-        {
-            const auto item = createdItem(this->ui->destinationsTable,
+        if (const auto item = createdItem(tbl,
                                           row, DestsColumn::ID,
-                                          ItemDefaults{}.use(fixedFont));
+                                          ItemDefaults{}.use(fixedFont))) {
             item->setFlags(flags);
             item->setText(QString::fromStdString(id.value_or("")));
         }
-        {
-            const auto item = createdItem(this->ui->destinationsTable, row, DestsColumn::Kind);
+        if (const auto item = createdItem(tbl, row, DestsColumn::Kind)) {
             item->setFlags(flags);
             item->setText(QString::fromStdString(
                 get<std::string>(destination, "Kind").value_or("")));
         }
-        {
-            constexpr auto align = Qt::AlignLeft|Qt::AlignVCenter;
-            const auto item = createdItem(this->ui->destinationsTable,
+        if (const auto item = createdItem(tbl,
                                           row, DestsColumn::Mount,
-                                          ItemDefaults{}.use(align).use(fixedFont));
+                                          ItemDefaults{}.use(alignLeft).use(fixedFont))) {
             item->setFlags(flags);
             item->setText(QString::fromStdString(mp.value_or("")));
         }
@@ -1601,7 +1627,7 @@ void MainWindow::handleGotDestinations(
             const auto percentUsage = (si.capacity != 0u)
                                           ? static_cast<int>((double(used) / double(si.capacity)) * 100.0)
                                           : 0;
-            auto widget = new QProgressBar{this->ui->destinationsTable};
+            auto widget = new QProgressBar{tbl};
             widget->setOrientation(Qt::Horizontal);
             constexpr auto percentMin = 0;
             constexpr auto percentMax = 100;
@@ -1614,25 +1640,24 @@ void MainWindow::handleGotDestinations(
                                    .arg(used)
                                    .arg(si.capacity)
                                    .arg(si.free));
-            this->ui->destinationsTable->setCellWidget(row, DestsColumn::Use,
+            tbl->setCellWidget(row, DestsColumn::Use,
                                                        widget);
 
             const auto align = Qt::AlignRight|Qt::AlignBottom;
             const auto text = (mp && !ec)
                                   ? QString("%1%").arg(percentUsage)
                                   : QString{};
-            const auto item = createdItem(this->ui->destinationsTable,
+            const auto item = createdItem(tbl,
                                           row, DestsColumn::Use,
                                           ItemDefaults{}.use(align)
                                               .use(smallFont));
             item->setFlags(flags);
             item->setText(text);
         }
-        {
-            const auto item = createdItem(this->ui->destinationsTable,
+        if (const auto item = createdItem(tbl,
                                           row, DestsColumn::Capacity,
                                           ItemDefaults{}.use(alignRight)
-                                              .use(fixedFont));
+                                              .use(fixedFont))) {
             item->setFlags(flags);
             if (mp && !ec) {
                 item->setData(Qt::EditRole, double(si.capacity) / gigabyte);
@@ -1641,12 +1666,11 @@ void MainWindow::handleGotDestinations(
                 item->setText(QString{});
             }
         }
-        {
-            const auto item = createdItem(this->ui->destinationsTable,
+        if (const auto item = createdItem(tbl,
                                           row, DestsColumn::Free,
                                           ItemDefaults{}
                                               .use(alignRight)
-                                              .use(fixedFont));
+                                              .use(fixedFont))) {
             item->setFlags(flags);
             if (mp && !ec) {
                 item->setData(Qt::EditRole, double(si.free) / gigabyte);
@@ -1655,14 +1679,27 @@ void MainWindow::handleGotDestinations(
                 item->setText(QString{});
             }
         }
-        {
+        if (const auto item = createdPushButton(tbl, row, DestsColumn::Action,
+                                                "Start",
+                                                [this,id](QPushButton *pb) {
+                this->handleDestinationAction(pb->text(), id.value_or(""));
+            })) {
+            const auto mountPoint = mp.value_or("");
+            const auto status = this->lastStatus;
+            item->setText(textForDestAction(status, mountPoint));
+            item->setEnabled(mp.has_value());
+        }
+        if (const auto item = createdItem(tbl,
+                                          row, DestsColumn::Action)) {
+            //item->setSizeHint(tbl->cellWidget(row, DestsColumn::Action)->sizeHint());
+        }
+        if (const auto item = createdItem(tbl,
+                                          row, DestsColumn::BackupStat,
+                                          ItemDefaults{}.use(fixedFont))) {
             const auto status = this->lastStatus;
             const auto mountPoint = mp.value_or("");
-            const auto item = createdItem(this->ui->destinationsTable,
-                                          row, DestsColumn::BackupStat,
-                                          ItemDefaults{}.use(fixedFont));
             item->setFlags(flags);
-            item->setText(textForBackupStatus(status, mountPoint));
+            item->setText(textForDestBackupStat(status, mountPoint));
             item->setToolTip(toolTipForBackupStatus(status, mountPoint));
         }
         if (mp) {
@@ -1671,6 +1708,40 @@ void MainWindow::handleGotDestinations(
         ++row;
     }
     this->updateMountPointsView(mountPoints);
+}
+
+void MainWindow::handleDestinationAction(
+    const QString& actionName,
+    const std::string& destId)
+{
+    qDebug() << "handleDestinationAction called" << actionName;
+    auto args = QStringList{};
+    if (actionName == "Start") {
+        args << "startbackup";
+    }
+    else if (actionName == "Stop") {
+        args << "stopbackup";
+    }
+    else {
+        qWarning() << "unrecognized action" << actionName;
+        return;
+    }
+    args << "--destination";
+    args << destId.c_str();
+    const auto process = new QProcess{this};
+    connect(process, &QProcess::errorOccurred,
+            this, [this](QProcess::ProcessError error){
+        // TODO: integrate this better
+        qWarning() << this->tmutilPath << "error" << error;
+    });
+    connect(process, &QProcess::finished,
+            this, [this](int code, QProcess::ExitStatus status){
+        // TODO: integrate this better
+        qDebug() << this->tmutilPath << "code" << code << "status" << status;
+    });
+    connect(process, &QProcess::finished,
+            process, &QProcess::deleteLater);
+    process->start(this->tmutilPath, args, QProcess::ReadOnly);
 }
 
 void MainWindow::handleGotDestinations(const plist_array &plist)
@@ -1727,19 +1798,22 @@ void MainWindow::handleTmStatus(const plist_object &plist)
         return;
     }
     this->lastStatus = *dict;
-    const auto rows = this->ui->destinationsTable->rowCount();
+    const auto tbl = this->ui->destinationsTable;
+    const auto rows = tbl->rowCount();
     for (auto row = 0; row < rows; ++row) {
-        const auto mpItem = this->ui->destinationsTable->item(row, 3);
+        const auto mpItem = tbl->item(row, DestsColumn::Mount);
         if (!mpItem) {
             continue;
         }
-        const auto stItem = this->ui->destinationsTable->item(row, 7);
-        if (!stItem) {
-            continue;
-        }
         const auto mountPoint = mpItem->text().toStdString();
-        stItem->setText(textForBackupStatus(*dict, mountPoint));
-        stItem->setToolTip(toolTipForBackupStatus(*dict, mountPoint));
+        if (const auto item = qobject_cast<QPushButton*>(
+                tbl->cellWidget(row, DestsColumn::Action))) {
+            item->setText(textForDestAction(*dict, mountPoint));
+        }
+        if (const auto item = tbl->item(row, DestsColumn::BackupStat)) {
+            item->setText(textForDestBackupStat(*dict, mountPoint));
+            item->setToolTip(toolTipForBackupStatus(*dict, mountPoint));
+        }
     }
 }
 
