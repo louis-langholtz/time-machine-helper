@@ -63,8 +63,7 @@ auto toPlistDate(const QString& string)
     // particular, YYYY '-' MM '-' DD 'T' HH ':' MM ':' SS 'Z'.
     // Smaller units may be omitted with a loss of precision)
     const auto d = QDateTime::fromString(string, Qt::ISODate);
-    const auto t = std::chrono::system_clock::from_time_t(d.toSecsSinceEpoch());
-    return std::chrono::time_point<std::chrono::system_clock>{t};
+    return std::chrono::system_clock::from_time_t(d.toSecsSinceEpoch());
 }
 
 }
