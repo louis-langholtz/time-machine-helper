@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>845</width>
+    <width>900</width>
     <height>900</height>
    </rect>
   </property>
@@ -28,6 +28,9 @@
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
        <widget class="QLabel" name="destinationsLabel">
+        <property name="toolTip">
+         <string>Table of destinations.</string>
+        </property>
         <property name="text">
          <string>Destinations</string>
         </property>
@@ -40,6 +43,9 @@
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
+        </property>
+        <property name="toolTip">
+         <string>Destinations table.</string>
         </property>
         <property name="horizontalScrollBarPolicy">
          <enum>Qt::ScrollBarAlwaysOff</enum>
@@ -142,6 +148,9 @@
       </item>
       <item>
        <widget class="QLabel" name="machinesLabel">
+        <property name="toolTip">
+         <string>Table of source machines.</string>
+        </property>
         <property name="text">
          <string>Machines</string>
         </property>
@@ -154,6 +163,9 @@
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
+        </property>
+        <property name="toolTip">
+         <string>Source machines table.</string>
         </property>
         <property name="horizontalScrollBarPolicy">
          <enum>Qt::ScrollBarAlwaysOff</enum>
@@ -249,6 +261,9 @@
       </item>
       <item>
        <widget class="QLabel" name="volumesLabel">
+        <property name="toolTip">
+         <string>Table of source volumes.</string>
+        </property>
         <property name="text">
          <string>Volumes</string>
         </property>
@@ -261,6 +276,9 @@
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
+        </property>
+        <property name="toolTip">
+         <string>Source volumes table showing each uniquely identified volume per row.</string>
         </property>
         <property name="horizontalScrollBarPolicy">
          <enum>Qt::ScrollBarAlwaysOff</enum>
@@ -348,7 +366,7 @@
       <item>
        <widget class="QLabel" name="backupsLabel">
         <property name="toolTip">
-         <string>File system info for Time Machine associated paths.</string>
+         <string>Table of backups.</string>
         </property>
         <property name="text">
          <string>Backups</string>
@@ -357,6 +375,9 @@
       </item>
       <item>
        <widget class="QTableWidget" name="backupsTable">
+        <property name="toolTip">
+         <string>Backups table showing rows of backups.</string>
+        </property>
         <property name="horizontalScrollBarPolicy">
          <enum>Qt::ScrollBarAlwaysOff</enum>
         </property>
@@ -474,10 +495,10 @@
         <item>
          <widget class="QPushButton" name="deletingPushButton">
           <property name="toolTip">
-           <string>Administrative action: deletes selected backups.</string>
+           <string>Deletes selected backups.</string>
           </property>
           <property name="text">
-           <string>Delete Backups...</string>
+           <string>Delete...</string>
           </property>
          </widget>
         </item>
@@ -487,7 +508,7 @@
            <string>Verifies checksums of selected backups. As admin, will allow verification of otherwise restricted components.</string>
           </property>
           <property name="text">
-           <string>Verify Backups...</string>
+           <string>Verify...</string>
           </property>
          </widget>
         </item>
@@ -522,7 +543,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>845</width>
+     <width>900</width>
      <height>24</height>
     </rect>
    </property>
