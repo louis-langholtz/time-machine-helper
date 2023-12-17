@@ -78,20 +78,32 @@
          <property name="text">
           <string>Name</string>
          </property>
+         <property name="toolTip">
+          <string>Destination name, also refered to as a volume name.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>ID</string>
+         </property>
+         <property name="toolTip">
+          <string>Identifier for destination.</string>
          </property>
         </column>
         <column>
          <property name="text">
           <string>Kind</string>
          </property>
+         <property name="toolTip">
+          <string>The kind of the destination.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Mount Point</string>
+         </property>
+         <property name="toolTip">
+          <string>Path at which the destination is mounted at.</string>
          </property>
         </column>
         <column>
@@ -127,6 +139,9 @@
         <column>
          <property name="text">
           <string>Action</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup action for the destination.</string>
          </property>
         </column>
         <column>
@@ -198,18 +213,24 @@
          <property name="text">
           <string>Name</string>
          </property>
+         <property name="toolTip">
+          <string>Machine name.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>UUID</string>
          </property>
          <property name="toolTip">
-          <string>Universal unique ID.</string>
+          <string>Universal unique ID of the named machine.</string>
          </property>
         </column>
         <column>
          <property name="text">
           <string>Model</string>
+         </property>
+         <property name="toolTip">
+          <string>Model of the machine.</string>
          </property>
         </column>
         <column>
@@ -234,6 +255,9 @@
         <column>
          <property name="text">
           <string>Volumes</string>
+         </property>
+         <property name="toolTip">
+          <string>Number of unique volumes in backups for the machines.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -311,20 +335,32 @@
          <property name="text">
           <string>Name</string>
          </property>
+         <property name="toolTip">
+          <string>Volume name.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>UUID</string>
+         </property>
+         <property name="toolTip">
+          <string>Universal unique identifier of the volume.</string>
          </property>
         </column>
         <column>
          <property name="text">
           <string>Type</string>
          </property>
+         <property name="toolTip">
+          <string>File system type of the volume.</string>
+         </property>
         </column>
         <column>
          <property name="text">
           <string>Max Used</string>
+         </property>
+         <property name="toolTip">
+          <string>Maximum byte size of the volume in all backups. </string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -334,6 +370,9 @@
          <property name="text">
           <string>Machines</string>
          </property>
+         <property name="toolTip">
+          <string>Number of machines for which this volume is associated with. This is usually 1, unless the storage has been shared with other machines.</string>
+         </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
          </property>
@@ -342,6 +381,9 @@
          <property name="text">
           <string>Destinations</string>
          </property>
+         <property name="toolTip">
+          <string>Number of destinations storing backups of the volume.</string>
+         </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
          </property>
@@ -349,6 +391,9 @@
         <column>
          <property name="text">
           <string>Backups</string>
+         </property>
+         <property name="toolTip">
+          <string>Number of backups found for the volume.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
@@ -406,6 +451,9 @@
          <property name="text">
           <string>Name</string>
          </property>
+         <property name="toolTip">
+          <string>Backup name.</string>
+         </property>
         </column>
         <column>
          <property name="text">
@@ -418,6 +466,9 @@
         <column>
          <property name="text">
           <string>State</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup state.</string>
          </property>
         </column>
         <column>
@@ -434,6 +485,9 @@
         <column>
          <property name="text">
           <string>Number</string>
+         </property>
+         <property name="toolTip">
+          <string>Backup &quot;number&quot;.</string>
          </property>
          <property name="textAlignment">
           <set>AlignTrailing|AlignVCenter</set>
