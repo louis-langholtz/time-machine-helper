@@ -206,6 +206,8 @@ void DirectoryReader::run() {
     using std::filesystem::directory_iterator;
     using std::filesystem::directory_options;
 
+    QThread::setTerminationEnabled(true);
+
     auto ec = std::error_code{};
     const auto options = directory_options::skip_permission_denied;
     const auto it = directory_iterator{this->directory, options, ec};
@@ -243,11 +245,24 @@ void DirectoryReader::run() {
             if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
                 continue;
             }
-            const auto xattrMap = getAttributes(path, xattrNames);
-            if (!xattrMap) {
+            auto xattrMap = QMap<QString, QByteArray>{};
+            for (const auto& attrName: xattrNames) {
+                if (this->isInterruptionRequested()) {
+                    return;
+                }
+                const auto buffer = readAttribute(path, attrName, ec);
+                if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+                    break;
+                }
+                if (ec) {
+                    continue;
+                }
+                xattrMap.insert(QString::fromStdString(attrName), buffer);
+            }
+            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
                 continue;
             }
-            emit entry(path, status, *xattrMap);
+            emit entry(path, status, xattrMap);
         }
         else {
             emit entry(path, status, QMap<QString,QByteArray>{});
