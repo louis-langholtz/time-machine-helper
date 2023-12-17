@@ -25,14 +25,16 @@
 
 namespace {
 
+constexpr auto zeroSecondsInMS = 0;
 constexpr auto oneSecondsInMS = 1000;
 constexpr auto twoSecondsInMS = 2000;
 constexpr auto indentation = 10;
 
 constexpr auto openMode =
     QProcess::ReadWrite|QProcess::Text|QProcess::Unbuffered;
-constexpr auto noExplanationMsg =
-    "no explanation";
+
+constexpr auto processStoppedMsg = "Process stopped.";
+constexpr auto noExplanationMsg = "no explanation";
 
 auto toHtmlList(const QStringList &strings) -> QString
 {
@@ -112,6 +114,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     env{QProcessEnvironment::InheritFromParent},
     stopSig{SIGINT} // tmutil handles SIGINT most gracefully.
 {
+    this->setObjectName("pathActionDialog");
     this->setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle(tr("Path Action Dialog"));
 
@@ -250,8 +253,28 @@ PathActionDialog::PathActionDialog(QWidget *parent):
 
 PathActionDialog::~PathActionDialog()
 {
-    qDebug() << "~PathActionDialog called while"
-             << (this->process? "processing": "quiet");
+    const auto proc = this->process;
+    if (!proc) {
+        return;
+    }
+
+    qDebug() << "~PathActionDialog called when process state is" << proc->state();
+    for (auto stopAttempt = 0; proc->state() != QProcess::NotRunning; ++stopAttempt) {
+        switch (stopAttempt) {
+        case 0:
+            this->stop();
+            proc->waitForFinished(oneSecondsInMS);
+            break;
+        case 1:
+            this->terminate();
+            proc->waitForFinished(twoSecondsInMS);
+            break;
+        default:
+            this->kill();
+            proc->waitForFinished();
+            return;
+        }
+    }
 }
 
 void PathActionDialog::closeEvent(QCloseEvent *event)
@@ -476,11 +499,11 @@ void PathActionDialog::startAction()
 
     this->process = new QProcess(this);
     connect(this->process, &QProcess::errorOccurred,
-            this, &PathActionDialog::setErrorOccurred);
+            this, &PathActionDialog::handleErrorOccurred);
     connect(this->process, &QProcess::started,
-            this, &PathActionDialog::setProcessStarted);
+            this, &PathActionDialog::handleProcessStarted);
     connect(this->process, &QProcess::finished,
-            this, &PathActionDialog::setProcessFinished);
+            this, &PathActionDialog::handleProcessFinished);
     connect(this->process, &QProcess::readyReadStandardOutput,
             this, &PathActionDialog::readProcessOutput);
     connect(this->process, &QProcess::readyReadStandardError,
@@ -494,22 +517,52 @@ void PathActionDialog::startAction()
 
 void PathActionDialog::stopAction()
 {
-    qDebug() << "stopAction called for:" << this->verb;
-    if (this->process && this->process->state() == QProcess::Running) {
-        qDebug() << "stopAction kill with:"
-                 << this->stopSig
-                 << this->verb;
-        const auto res =
-            ::kill(static_cast<pid_t>(this->process->processId()),
-                   this->stopSig);
-        if (res == -1) {
-            qWarning() << "kill failed:"
-                       << std::generic_category().message(errno);
-        }
-        QTimer::singleShot(oneSecondsInMS, this->process,
-                           &QProcess::terminate);
-        QTimer::singleShot(twoSecondsInMS, this->process, &QProcess::kill);
+    const auto proc = this->process;
+    if (proc && proc->state() == QProcess::Running) {
+        this->userRequestedStop = true;
+        this->stop();
+        QTimer::singleShot(oneSecondsInMS, this, &PathActionDialog::terminate);
+        QTimer::singleShot(twoSecondsInMS, this, &PathActionDialog::kill);
     }
+}
+
+void sendSignal(qint64 pid, int sig)
+{
+    qDebug() << "sendSignal" << sig << "to" << pid;
+    const auto res = ::kill(static_cast<pid_t>(pid), sig);
+    if (res == -1) {
+        qWarning() << "kill(" << pid << "," << sig << ") failed:"
+                   << std::generic_category().message(errno);
+    }
+}
+
+void PathActionDialog::stop()
+{
+    const auto proc = this->process;
+    const auto pid = proc ? proc->processId() : qint64(0);
+    if (pid <= 0) {
+        return;
+    }
+    qDebug() << "PathActionDialog::stop"
+             << proc->program()
+             << proc->arguments()
+             << ", pid"
+             << pid
+             << "with signal"
+             << this->stopSig;
+    sendSignal(pid, this->stopSig);
+}
+
+void PathActionDialog::terminate()
+{
+    this->stopSig = SIGTERM;
+    this->stop();
+}
+
+void PathActionDialog::kill()
+{
+    this->stopSig = SIGKILL;
+    this->stop();
 }
 
 void PathActionDialog::readProcessOutput()
@@ -657,29 +710,42 @@ void PathActionDialog::writePasswordToProcess()
     this->process->setCurrentWriteChannel(saveChannel);
 }
 
-void PathActionDialog::setProcessStarted()
+void PathActionDialog::handleProcessStarted()
 {
     qInfo() << "process started";
     this->statusBar->showMessage("Process running.");
 }
 
-void PathActionDialog::setProcessFinished(int code, int status)
+auto PathActionDialog::messageForFinish(int code, int status) const
+    -> QString
 {
-    qInfo() << "process setProcessFinished"
+    switch (QProcess::ExitStatus(status)) {
+    case QProcess::NormalExit:
+        if (code == EXIT_SUCCESS) {
+            return "Process finished successfully.";
+        }
+        if (this->userRequestedStop) {
+            return processStoppedMsg;
+        }
+        return QString("Process failed (%1): %2.")
+            .arg(code).arg(errorString(noExplanationMsg));
+    case QProcess::CrashExit:
+        break;
+    }
+    if (this->userRequestedStop) {
+        return processStoppedMsg;
+    }
+    return "Process exited abnormally.";
+}
+
+void PathActionDialog::handleProcessFinished(int code, int status)
+{
+    qInfo() << "PathActionDialog::handleProcessFinished"
             << "code:" << code
             << "status:" << status;
     this->stopButton->setEnabled(false);
     this->dismissButton->setEnabled(true);
-    switch (code) {
-    case EXIT_SUCCESS:
-        this->statusBar->showMessage("Process finished.");
-        break;
-    default:
-        this->statusBar->showMessage(
-            QString("Process failed (%1): %2.")
-                .arg(code).arg(errorString(noExplanationMsg)));
-        break;
-    }
+    this->statusBar->showMessage(messageForFinish(code, status));
     this->process->deleteLater();
     this->process = nullptr;
     if (this->pwdLineEdit) {
@@ -688,7 +754,7 @@ void PathActionDialog::setProcessFinished(int code, int status)
     }
 }
 
-void PathActionDialog::setErrorOccurred(int error)
+void PathActionDialog::handleErrorOccurred(int error)
 {
     this->statusBar->showMessage(
         QString("Process error occurred (%1): %2.")

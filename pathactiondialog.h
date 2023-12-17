@@ -66,24 +66,30 @@ public:
 
     void startAction();
     void stopAction();
-    void readProcessOutput();
-    void readProcessError();
-    void promptForPassword();
-    void writePasswordToProcess();
-    void setProcessStarted();
-    void setProcessFinished(int code, int status);
-    void setErrorOccurred(int error);
-    void expandPath(QTreeWidgetItem *item);
-    void collapsePath(QTreeWidgetItem *item);
 
 private:
+    [[nodiscard]] auto messageForFinish(int code, int status) const
+        -> QString;
+
     void disablePwdLineEdit();
     void changeAsRoot(int);
     void changeAskPass(int);
     void changePathSelection();
+    void expandPath(QTreeWidgetItem *item);
+    void collapsePath(QTreeWidgetItem *item);
+    void promptForPassword();
+    void writePasswordToProcess();
+    void readProcessOutput();
+    void readProcessError();
+    void handleProcessStarted();
+    void handleProcessFinished(int code, int status);
+    void handleErrorOccurred(int error);
     void handleReaderEntry(const std::filesystem::path& path,
                            const std::filesystem::file_status& status,
                            const QMap<QString, QByteArray>& attrs);
+    void stop();
+    void terminate();
+    void kill();
 
     QSplitter* splitter{};
     QLabel* textLabel{};
@@ -112,6 +118,7 @@ private:
     int stopSig{};
     bool withAdmin{};
     bool withAskPass{};
+    bool userRequestedStop{};
 };
 
 #endif // PATHACTIONDIALOG_H
