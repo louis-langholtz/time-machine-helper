@@ -586,6 +586,13 @@ auto erase(std::set<T>& dst, const QSet<T>& src)
     return dst;
 }
 
+auto secondsToUserTime(plist_real value) -> QString
+{
+    static constexpr auto secondsPerMinutes = 60;
+    return QString("~%1 minutes")
+        .arg(QString::number(value / secondsPerMinutes, 'f', 1));
+}
+
 auto decodeBackupPhase(const plist_string &name) -> QString
 {
     if (name == "ThinningPostBackup") {
@@ -596,78 +603,6 @@ auto decodeBackupPhase(const plist_string &name) -> QString
         return "Finding Changes";
     }
     return QString::fromStdString(name);
-}
-
-auto textForDestBackupStat(const plist_dict &status, const std::string &mp)
-    -> QString
-{
-    // When running...
-    const auto destMP = get<plist_string>(status, destinationMountPointKey);
-    if (destMP && destMP == mp) {
-        auto result = QStringList{};
-        if (const auto v = get<plist_string>(status, backupPhaseKey)) {
-            result << decodeBackupPhase(*v);
-        }
-        if (const auto prog = get<plist_dict>(status, progressKey)) {
-            if (const auto v = get<plist_real>(*prog, percentKey)) {
-                result << QString("%1%")
-                              .arg(QString::number(*v * 100.0, 'f', 1));
-            }
-        }
-        return result.join(' ');
-    }
-    return QString{};
-}
-
-auto textForDestAction(const plist_dict &status, const std::string &mp)
-    -> QString
-{
-    const auto destMP = get<plist_string>(status, destinationMountPointKey);
-    return (destMP && destMP == mp) ? "Stop": "Start";
-}
-
-auto secondsToUserTime(plist_real value) -> QString
-{
-    static constexpr auto secondsPerMinutes = 60;
-    return QString("~%1 minutes")
-        .arg(QString::number(value / secondsPerMinutes, 'f', 1));
-}
-
-auto toolTipForBackupStatus(const plist_dict &status, const std::string &mp)
-    -> QString
-{
-    // When running...
-    const auto destMP = get<plist_string>(status, destinationMountPointKey);
-    if (destMP && destMP == mp) {
-        auto result = QStringList{};
-        if (const auto v = get<plist_date>(status, dateStateChangeKey)) {
-            result << QString("Since: %1...").arg(QDateTime::fromSecsSinceEpoch(
-                std::chrono::system_clock::to_time_t(*v)).toString());
-        }
-        if (const auto v = get<plist_string>(status, destinationIdKey)) {
-            result << QString("Destination ID: %1.").arg(v->c_str());
-        }
-        if (const auto prog = get<plist_dict>(status, progressKey)) {
-            if (const auto v = get<plist_integer>(*prog, bytesKey)) {
-                result << QString("Number of bytes: %1.").arg(*v);
-            }
-            if (const auto v = get<plist_integer>(*prog, totalBytesKey)) {
-                result << QString("Total bytes: %1.").arg(*v);
-            }
-            if (const auto v = get<plist_integer>(*prog, numFilesKey)) {
-                result << QString("Number of files: %1.").arg(*v);
-            }
-            if (const auto v = get<plist_integer>(*prog, totalFilesKey)) {
-                result << QString("Total files: %1.").arg(*v);
-            }
-            if (const auto v = get<plist_real>(*prog, timeRemainingKey)) {
-                result << QString("Allegedly, %1 remaining.")
-                              .arg(secondsToUserTime(*v));
-            }
-        }
-        return result.join('\n');
-    }
-    return {};
 }
 
 auto createAboutDialog(QWidget *parent)
@@ -721,6 +656,198 @@ auto createdPushButton(QTableWidget* parent,
         });
     }
     return result;
+}
+
+auto createNoDestinationsDialog(QWidget *parent = nullptr)
+    -> QMessageBox*
+{
+    const auto dialog = new QMessageBox{parent};
+    dialog->setIcon(QMessageBox::Critical);
+    dialog->setText("No destination accessible!");
+    dialog->setInformativeText(
+        "No backups or restores are possible when no destinations are accessible!");
+    dialog->setModal(false);
+    return dialog;
+}
+
+auto createCantReadMountPointDialog(QWidget *parent = nullptr)
+    -> QMessageBox*
+{
+    const auto dialog = new QMessageBox{parent};
+    return dialog;
+}
+
+auto usage(const std::filesystem::space_info& si)
+    -> std::uintmax_t
+{
+    return si.capacity - si.free;
+}
+
+auto usageRatio(const std::filesystem::space_info& si)
+    -> double
+{
+    return (si.capacity != 0u)
+               ? double(usage(si)) / double(si.capacity)
+               : 0.0;
+}
+
+auto freeRatio(const std::filesystem::space_info& si)
+    -> double
+{
+    return (si.capacity != 0u)
+               ? double(si.free) / double(si.capacity)
+               : 0.0;
+}
+
+auto destsNameText(const plist_dict &destination)
+{
+    return QString::fromStdString(
+        get<std::string>(destination, "Name").value_or(""));
+}
+
+auto destsBackupStatText(const plist_dict &status,
+                         const std::optional<std::string> &mp)
+    -> QString
+{
+    // When running...
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
+    if (destMP && mp && *destMP == *mp) {
+        auto result = QStringList{};
+        if (const auto v = get<plist_string>(status, backupPhaseKey)) {
+            result << decodeBackupPhase(*v);
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_real>(*prog, percentKey)) {
+                result << QString("%1%")
+                              .arg(QString::number(*v * 100.0, 'f', 1));
+            }
+        }
+        return result.join(' ');
+    }
+    return QString{};
+}
+
+auto destsActionText(const plist_dict &status,
+                     const std::optional<std::string> &mp)
+    -> QString
+{
+    const auto destMP = get<plist_string>(status, destinationMountPointKey);
+    return (destMP && mp && destMP == *mp) ? "Stop": "Start";
+}
+
+auto destsBackupStatToolTip(const plist_dict &status,
+                            const std::optional<std::string> &mp)
+    -> QString
+{
+    // When running...
+    const auto destMP =
+        get<plist_string>(status, destinationMountPointKey);
+    if (destMP && mp && *destMP == *mp) {
+        auto result = QStringList{};
+        if (const auto v = get<plist_date>(status, dateStateChangeKey)) {
+            const auto t = std::chrono::system_clock::to_time_t(*v);
+            result << QString("Since: %1...")
+                          .arg(QDateTime::fromSecsSinceEpoch(t)
+                                   .toString());
+        }
+        if (const auto v = get<plist_string>(status, destinationIdKey)) {
+            result << QString("Destination ID: %1.").arg(v->c_str());
+        }
+        if (const auto prog = get<plist_dict>(status, progressKey)) {
+            if (const auto v = get<plist_integer>(*prog, bytesKey)) {
+                result << QString("Number of bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalBytesKey)) {
+                result << QString("Total bytes: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, numFilesKey)) {
+                result << QString("Number of files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_integer>(*prog, totalFilesKey)) {
+                result << QString("Total files: %1.").arg(*v);
+            }
+            if (const auto v = get<plist_real>(*prog, timeRemainingKey)) {
+                result << QString("Allegedly, %1 remaining.")
+                              .arg(secondsToUserTime(*v));
+            }
+        }
+        return result.join('\n');
+    }
+    return {};
+}
+
+auto destsCapacityData(const std::optional<std::string> &mp,
+                       const std::error_code& ec,
+                       const std::filesystem::space_info& si)
+    -> QVariant
+{
+    return (mp && !ec)
+               ? QVariant{(double(si.capacity) / gigabyte)}
+               : QVariant{};
+}
+
+auto destsCapacityToolTip(
+    const std::optional<std::string> &mp,
+    const std::error_code& ec,
+    const std::filesystem::space_info& si) -> QString
+{
+    if (!mp) {
+        return QString{"No info available on capacity - no mount point for destination."};
+    }
+    if (ec) {
+        return QString{"Error reading mount point space info: %1"}
+            .arg(QString::fromStdString(ec.message()));
+    }
+    return QString{"%1 bytes capacity"}
+        .arg(si.capacity);
+}
+
+auto destsFreeData(const std::optional<std::string> &mp,
+                   const std::error_code& ec,
+                   const std::filesystem::space_info& si)
+    -> QVariant
+{
+    return (mp && !ec)
+               ? QVariant{(double(si.free) / gigabyte)}
+               : QVariant{};
+}
+
+auto destsFreeToolTip(
+    const std::optional<std::string> &mp,
+    const std::error_code& ec,
+    const std::filesystem::space_info& si) -> QString
+{
+    if (!mp) {
+        return QString{"No info available on free space - no mount point for destination."};
+    }
+    if (ec) {
+        return QString{"Error reading mount point space info: %1"}
+            .arg(QString::fromStdString(ec.message()));
+    }
+    return QString{"%1 bytes free out of %2, %3%"}
+        .arg(si.free)
+        .arg(si.capacity)
+        .arg(static_cast<int>(freeRatio(si) * 100.0));
+}
+
+auto createdDestsNameItem(
+    QTableWidget *tbl,
+    int row,
+    const std::optional<std::string> &mp,
+    const std::error_code& ec) -> QTableWidgetItem*
+{
+    const auto on = std::optional<Qt::CheckState>
+        {(mp && !ec)? Qt::Checked: Qt::Unchecked};
+    return createdItem(tbl, row, DestsColumn::Name,
+                       ItemDefaults{}.use(on));
+}
+
+auto space(const std::optional<std::string> &mp,
+           std::error_code& ec)
+    -> std::filesystem::space_info
+{
+    return mp ? std::filesystem::space(*mp, ec)
+              : std::filesystem::space_info{};
 }
 
 }
@@ -780,6 +907,8 @@ MainWindow::MainWindow(QWidget *parent):
             this, &MainWindow::checkTmDestinations);
     connect(this->statusTimer, &QTimer::timeout,
             this, &MainWindow::checkTmStatus);
+    connect(this->pathInfoTimer, &QTimer::timeout,
+            this, &MainWindow::updateMountPointPaths);
 
     QTimer::singleShot(0, this, &MainWindow::readSettings);
     QTimer::singleShot(0, this, &MainWindow::checkTmDestinations);
@@ -791,25 +920,34 @@ MainWindow::~MainWindow()
     delete this->ui;
 }
 
+void MainWindow::updateMountPointPaths()
+{
+    for (const auto& mountPoint: this->mountMap) {
+        this->updatePathInfo(mountPoint.first);
+    }
+}
+
 void MainWindow::updateMountPointsView(
     const std::map<std::string, plist_dict>& mountPoints)
 {
+    const auto noLongerEmpty = this->mountMap.empty() && !mountPoints.empty();
     this->mountMap = mountPoints;
     if (mountPoints.empty()) {
-        disconnect(this->destinationsTimer, &QTimer::timeout,
-                   this, &MainWindow::checkTmDestinations);
-        QMessageBox msgBox;
-        msgBox.setIcon(QMessageBox::Critical);
-        msgBox.setText("No destination accessible!");
-        msgBox.setInformativeText(
-            "No backups or restores are possible when no destinations are accessible!");
-        msgBox.exec();
-        connect(this->destinationsTimer, &QTimer::timeout,
-                this, &MainWindow::checkTmDestinations);
+        this->pathInfoTimer->stop();
+        if (!noDestinationsDialog) {
+            noDestinationsDialog = createNoDestinationsDialog(this);
+        }
+        noDestinationsDialog->show();
+        noDestinationsDialog->raise();
+        noDestinationsDialog->activateWindow();
         return;
     }
-    for (const auto& mountPoint: mountPoints) {
-        this->updatePathInfo(mountPoint.first);
+    if (noDestinationsDialog) {
+        noDestinationsDialog->setVisible(false);
+    }
+    if (noLongerEmpty && !this->pathInfoTimer->isActive()) {
+        this->pathInfoTimer->start(Settings::pathInfoInterval());
+        QTimer::singleShot(0, this, &MainWindow::updateMountPointPaths);
     }
 }
 
@@ -823,19 +961,21 @@ void MainWindow::handleDirectoryReaderEnded(
         return;
     }
 
-    qDebug() << "MainWindow::handleDirectoryReaderEnded called for" << ec.message();
+    qDebug() << "MainWindow::handleDirectoryReaderEnded called for"
+             << dir << ":" << ec.message();
 
-    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+    const auto isMountPoint = this->mountMap.find(dir) != this->mountMap.end();
+    if (!isMountPoint) {
+        showStatus(QString{"Unable to list contents of \"%1\": %2"}
+                       .arg(QString::fromStdString(dir.string()),
+                            QString::fromStdString(ec.message())));
         return;
     }
 
-    if (this->mountMap.contains(dir)) {
-        this->destinationsTimer->stop();
-    }
+    this->pathInfoTimer->stop();
 
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
-    // Following doesn't work on macos?
     msgBox.setTextFormat(Qt::TextFormat::MarkdownText);
     msgBox.setWindowTitle("Error!");
     msgBox.setText(QString("Unable to list contents of directory:\n\n`%1`")
@@ -857,6 +997,8 @@ void MainWindow::handleDirectoryReaderEnded(
         // open "x-apple.systempreferences:com.apple.preference.security"
     }
     msgBox.exec();
+
+    this->pathInfoTimer->start(Settings::pathInfoInterval());
 }
 
 void MainWindow::reportDir(
@@ -1465,7 +1607,7 @@ void MainWindow::checkTmStatus()
     connect(process, &PlistProcess::gotReaderError,
             this, &MainWindow::handleTmStatusReaderError);
     connect(process, &PlistProcess::finished,
-            this, &MainWindow::handlePlistProcessFinished);
+            this, &MainWindow::handleProgramFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmutilPath,
@@ -1483,7 +1625,7 @@ void MainWindow::checkTmDestinations()
     connect(process, &PlistProcess::gotReaderError,
             this, &MainWindow::handleTmDestinationsReaderError);
     connect(process, &PlistProcess::finished,
-            this, &MainWindow::handlePlistProcessFinished);
+            this, &MainWindow::handleProgramFinished);
     connect(process, &PlistProcess::finished,
             process, &PlistProcess::deleteLater);
     process->start(this->tmutilPath,
@@ -1518,8 +1660,7 @@ void MainWindow::handleQueryFailedToStart(const QString &text)
 {
     qDebug() << "MainWindow::handleQueryFailedToStart called:"
              << text;
-    disconnect(this->destinationsTimer, &QTimer::timeout,
-               this, &MainWindow::checkTmDestinations);
+    this->destinationsTimer->stop();
     constexpr auto queryFailedMsg = "Unable to start destinations query";
     const auto tmutilPath = this->tmutilPath;
     const auto info = QFileInfo(tmutilPath);
@@ -1595,22 +1736,17 @@ void MainWindow::handleGotDestinations(
     for (const auto& destination: destinations) {
         const auto mp = get<std::string>(destination, "MountPoint");
         const auto id = get<std::string>(destination, "ID");
+        const auto destsActionFunctor = [this,id](QPushButton *pb) {
+            this->handleDestinationAction(pb->text(), id.value_or(""));
+        };
         auto ec = std::error_code{};
-        const auto si = mp
-                            ? std::filesystem::space(*mp, ec)
-                            : std::filesystem::space_info{};
+        const auto si = space(mp, ec);
         const auto flags =
             Qt::ItemFlags{mp? Qt::ItemIsEnabled: Qt::NoItemFlags};
-        {
-            const auto on = std::optional<Qt::CheckState>{
-                (mp && !ec)? Qt::Checked: Qt::Unchecked};
-            const auto item = createdItem(tbl,
-                                          row, DestsColumn::Name,
-                                          ItemDefaults{}.use(on));
+        if (const auto item = createdDestsNameItem(tbl, row, mp, ec)) {
             item->setFlags(flags|Qt::ItemIsUserCheckable);
-            item->setText(QString::fromStdString(
-                get<std::string>(destination, "Name").value_or("")));
-            item->setToolTip("Backup disk a.k.a. backup destination.");
+            item->setText(destsNameText(destination));
+            item->setToolTip(QString{"Backup destination."});
         }
         if (const auto item = createdItem(tbl,
                                           row, DestsColumn::ID,
@@ -1630,10 +1766,8 @@ void MainWindow::handleGotDestinations(
             item->setText(QString::fromStdString(mp.value_or("")));
         }
         {
-            const auto used = si.capacity - si.free;
-            const auto percentUsage = (si.capacity != 0u)
-                                          ? static_cast<int>((double(used) / double(si.capacity)) * 100.0)
-                                          : 0;
+            const auto used = usage(si);
+            const auto percentUsage = static_cast<int>(usageRatio(si) * 100.0);
             auto widget = new QProgressBar{tbl};
             widget->setOrientation(Qt::Horizontal);
             constexpr auto percentMin = 0;
@@ -1647,9 +1781,7 @@ void MainWindow::handleGotDestinations(
                                    .arg(used)
                                    .arg(si.capacity)
                                    .arg(si.free));
-            tbl->setCellWidget(row, DestsColumn::Use,
-                                                       widget);
-
+            tbl->setCellWidget(row, DestsColumn::Use, widget);
             const auto align = Qt::AlignRight|Qt::AlignBottom;
             const auto text = (mp && !ec)
                                   ? QString("%1%").arg(percentUsage)
@@ -1666,12 +1798,8 @@ void MainWindow::handleGotDestinations(
                                           ItemDefaults{}.use(alignRight)
                                               .use(fixedFont))) {
             item->setFlags(flags);
-            if (mp && !ec) {
-                item->setData(Qt::EditRole, double(si.capacity) / gigabyte);
-            }
-            else {
-                item->setText(QString{});
-            }
+            item->setData(Qt::DisplayRole, destsCapacityData(mp, ec, si));
+            item->setToolTip(destsCapacityToolTip(mp, ec, si));
         }
         if (const auto item = createdItem(tbl,
                                           row, DestsColumn::Free,
@@ -1679,35 +1807,20 @@ void MainWindow::handleGotDestinations(
                                               .use(alignRight)
                                               .use(fixedFont))) {
             item->setFlags(flags);
-            if (mp && !ec) {
-                item->setData(Qt::EditRole, double(si.free) / gigabyte);
-            }
-            else {
-                item->setText(QString{});
-            }
+            item->setData(Qt::DisplayRole, destsFreeData(mp, ec, si));
+            item->setToolTip(destsFreeToolTip(mp, ec, si));
         }
         if (const auto item = createdPushButton(tbl, row, DestsColumn::Action,
-                                                "Start",
-                                                [this,id](QPushButton *pb) {
-                this->handleDestinationAction(pb->text(), id.value_or(""));
-            })) {
-            const auto mountPoint = mp.value_or("");
-            const auto status = this->lastStatus;
-            item->setText(textForDestAction(status, mountPoint));
+                                                "Start", destsActionFunctor)) {
+            item->setText(destsActionText(this->lastStatus, mp));
             item->setEnabled(mp.has_value());
-        }
-        if (const auto item = createdItem(tbl,
-                                          row, DestsColumn::Action)) {
-            //item->setSizeHint(tbl->cellWidget(row, DestsColumn::Action)->sizeHint());
         }
         if (const auto item = createdItem(tbl,
                                           row, DestsColumn::BackupStat,
                                           ItemDefaults{}.use(fixedFont))) {
-            const auto status = this->lastStatus;
-            const auto mountPoint = mp.value_or("");
             item->setFlags(flags);
-            item->setText(textForDestBackupStat(status, mountPoint));
-            item->setToolTip(toolTipForBackupStatus(status, mountPoint));
+            item->setText(destsBackupStatText(this->lastStatus, mp));
+            item->setToolTip(destsBackupStatToolTip(this->lastStatus, mp));
         }
         if (mp) {
             mountPoints.emplace(*mp, destination);
@@ -1721,16 +1834,17 @@ void MainWindow::handleDestinationAction(
     const QString& actionName,
     const std::string& destId)
 {
-    qDebug() << "handleDestinationAction called" << actionName;
     auto args = QStringList{};
     if (actionName == "Start") {
+        qInfo() << "handleDestinationAction: starting backup.";
         args << "startbackup";
     }
     else if (actionName == "Stop") {
+        qInfo() << "handleDestinationAction: stopping backup.";
         args << "stopbackup";
     }
     else {
-        qWarning() << "unrecognized action" << actionName;
+        qWarning() << "handleDestinationAction: unrecognized action" << actionName;
         return;
     }
     args << "--destination";
@@ -1738,13 +1852,16 @@ void MainWindow::handleDestinationAction(
     const auto process = new QProcess{this};
     connect(process, &QProcess::errorOccurred,
             this, [this](QProcess::ProcessError error){
-        // TODO: integrate this better
-        qWarning() << this->tmutilPath << "error" << error;
+        this->errorMessage.showMessage(QString{"%1: process-error %2"}
+                                           .arg(this->tmutilPath)
+                                           .arg(error));
     });
     connect(process, &QProcess::finished,
-            this, [this](int code, QProcess::ExitStatus status){
-        // TODO: integrate this better
-        qDebug() << this->tmutilPath << "code" << code << "status" << status;
+            this, [this,process](int code, QProcess::ExitStatus status){
+        this->handleProgramFinished(
+            process->program(),
+            process->arguments(),
+            code, status);
     });
     connect(process, &QProcess::finished,
             process, &QProcess::deleteLater);
@@ -1815,11 +1932,11 @@ void MainWindow::handleTmStatus(const plist_object &plist)
         const auto mountPoint = mpItem->text().toStdString();
         if (const auto item = qobject_cast<QPushButton*>(
                 tbl->cellWidget(row, DestsColumn::Action))) {
-            item->setText(textForDestAction(*dict, mountPoint));
+            item->setText(destsActionText(*dict, mountPoint));
         }
         if (const auto item = tbl->item(row, DestsColumn::BackupStat)) {
-            item->setText(textForDestBackupStat(*dict, mountPoint));
-            item->setToolTip(toolTipForBackupStatus(*dict, mountPoint));
+            item->setText(destsBackupStatText(*dict, mountPoint));
+            item->setToolTip(destsBackupStatToolTip(*dict, mountPoint));
         }
     }
 }
@@ -1870,23 +1987,24 @@ void MainWindow::handleTmStatusReaderError(
             .arg(text));
 }
 
-void MainWindow::handlePlistProcessFinished(
+void MainWindow::handleProgramFinished(
     const QString& program,
-    const QStringList&,
+    const QStringList& args,
     int code,
     int status)
 {
     switch (QProcess::ExitStatus(status)) {
+    case QProcess::CrashExit:
+        this->showStatus(QString("\"%1 %2\" exited abnormally")
+                             .arg(program, args.join(' ')));
+        return;
     case QProcess::NormalExit:
         break;
-    case QProcess::CrashExit:
-        this->showStatus(QString("%1 exited abnormally")
-                             .arg(program));
-        return;
     }
     if (code != 0) {
-        this->showStatus(QString("%1 exited with code %2")
-                             .arg(program).arg(code));
+        this->showStatus(QString("\"%1 %2\" exited with code %2")
+                             .arg(program, args.join(' '))
+                             .arg(code));
     }
 }
 
@@ -1978,5 +2096,4 @@ void MainWindow::readSettings()
     }
     this->destinationsTimer->start(Settings::tmutilDestInterval());
     this->statusTimer->start(Settings::tmutilStatInterval());
-    this->pathInfoTimer->start(Settings::pathInfoInterval());
 }

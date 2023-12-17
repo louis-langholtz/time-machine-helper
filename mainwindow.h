@@ -22,6 +22,7 @@ class QTableWidget;
 class QTableWidgetItem;
 class QTreeWidgetItem;
 class QTimer;
+class QMessageBox;
 
 struct PathInfo {
     std::filesystem::file_status status;
@@ -48,7 +49,6 @@ public:
     void readSettings();
     void updateMountPointsView(
         const std::map<std::string, plist_dict>& mountPoints);
-    void updatePathInfo(const std::string& pathName);
     void deleteSelectedBackups();
     void uniqueSizeSelectedPaths();
     void restoreSelectedPaths();
@@ -101,7 +101,7 @@ private:
     void handleTmStatusReaderError(qint64 lineNumber,
                                    int error,
                                    const QString& text);
-    void handlePlistProcessFinished(
+    void handleProgramFinished(
         const QString& program,
         const QStringList& arguments,
         int code,
@@ -113,6 +113,8 @@ private:
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);
+    void updateMountPointPaths();
+    void updatePathInfo(const std::string& pathName);
     void updateStorageDir(const std::filesystem::path& dir,
                           const QSet<QString>& filenames);
     void updateMachineDir(const std::filesystem::path& dir,
@@ -121,6 +123,7 @@ private:
                          const QSet<QString>& filenames);
 
     QErrorMessage errorMessage;
+    QMessageBox *noDestinationsDialog{};
     Ui::MainWindow *ui{};
     QTimer *destinationsTimer{};
     QTimer *statusTimer{};
