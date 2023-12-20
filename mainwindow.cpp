@@ -850,6 +850,15 @@ auto space(const std::optional<std::string> &mp,
               : std::filesystem::space_info{};
 }
 
+auto restoreDialogText(const QStringList& sources,
+                       const QString& destination) -> QString
+{
+    return QString("Are you sure that you want to restore from"
+                   " the following %1 selected %2 to:\n\n`%3`?")
+        .arg(sources.size())
+        .arg(sources.size() == 1? "path": "paths", destination);
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
@@ -1500,12 +1509,12 @@ void MainWindow::restoreSelectedPaths()
     if (!dstDialog.exec()) {
         return;
     }
-    const auto files = dstDialog.selectedFiles();
-    qDebug() << "openFileDialog:" << files;
-    if (files.isEmpty()) {
+    const auto destinations = dstDialog.selectedFiles();
+    qDebug() << "openFileDialog:" << destinations;
+    if (destinations.isEmpty()) {
         return;
     }
-    qDebug() << files;
+    qDebug() << destinations;
 
     // open path action dialog.
     const auto dialog = new PathActionDialog{this};
@@ -1518,14 +1527,22 @@ void MainWindow::restoreSelectedPaths()
     dialog->setSelectable(true);
     dialog->setTmutilPath(this->tmutilPath);
     dialog->setWindowTitle("Restore Dialog");
-    dialog->setText(QString(
-        "Are you sure that you want to restore the following paths to '%2'?")
-                        .arg(files.first()));
+    dialog->setText(restoreDialogText(selectedPaths, destinations.first()));
     dialog->setFirstArgs(QStringList() << "-v");
     dialog->setPaths(selectedPaths);
-    dialog->setLastArgs(files);
+    dialog->setLastArgs(destinations);
     dialog->setAction(tmutilRestoreVerb);
+    connect(dialog, &PathActionDialog::selectedPathsChanged,
+            this, &MainWindow::handleRestoreSelectedPathsChanged);
     dialog->show();
+}
+
+void MainWindow::handleRestoreSelectedPathsChanged( // NOLINT(readability-convert-member-functions-to-static)
+    PathActionDialog *dialog,
+    const QStringList& paths)
+{
+    const auto destinationPaths = dialog->lastArgs();
+    dialog->setText(restoreDialogText(paths, destinationPaths.first()));
 }
 
 void MainWindow::verifySelectedBackups()

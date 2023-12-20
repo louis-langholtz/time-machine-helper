@@ -24,6 +24,8 @@ class QTreeWidgetItem;
 class QTimer;
 class QMessageBox;
 
+class PathActionDialog;
+
 struct PathInfo {
     std::filesystem::file_status status;
     QMap<QString, QByteArray> attributes;
@@ -110,6 +112,9 @@ private:
                                  const std::string& destId);
 
     void handleItemChanged(QTableWidgetItem *item);
+    void handleRestoreSelectedPathsChanged(
+        PathActionDialog *dialog,
+        const QStringList& paths);
     void changeTmutilStatusInterval(int msecs);
     void changeTmutilDestinationsInterval(int msecs);
     void changePathInfoInterval(int msecs);
