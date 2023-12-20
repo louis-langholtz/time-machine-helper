@@ -67,6 +67,9 @@ public:
     void startAction();
     void stopAction();
 
+signals:
+    void selectedPathsChanged(PathActionDialog*, const QStringList& paths);
+
 private:
     [[nodiscard]] auto messageForFinish(int code, int status) const
         -> QString;

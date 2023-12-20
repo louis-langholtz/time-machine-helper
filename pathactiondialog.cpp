@@ -121,6 +121,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->splitter->setOrientation(Qt::Vertical);
     this->splitter->setChildrenCollapsible(false);
 
+    this->textLabel->setTextFormat(Qt::TextFormat::MarkdownText);
     this->textLabel->setFont([this](){
         QFont font = this->textLabel->font();
         font.setWeight(QFont::Bold);
@@ -168,7 +169,7 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     const auto fixedFontInfo =
         QFontInfo(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     const auto styleSheet =
-        QString{"* {font-family: %1; font-size: %2px;} .stdout {color:green;} .stderr {color:red;"}
+        QString{"* {font-family: %1; font-size: %2px;} .stdout {color:green;} .stderr {color:red;}"}
                                 .arg(fixedFontInfo.family()).arg(fixedFontInfo.pixelSize());
     this->outputWidget->document()->setDefaultStyleSheet(styleSheet);
     this->outputWidget->setMinimumHeight(0);
@@ -575,7 +576,9 @@ void PathActionDialog::readProcessOutput()
     if (!text.isEmpty()) {
         text.replace('\n', QString("<br/>"));
         this->outputWidget->insertHtml(
-            QString("<span class='stdout'>%1</span>").arg(text));
+            QString(
+                R"(<span class="stdout" title="From the process's standard output channel.">%1</span>)")
+                .arg(text));
     }
 }
 
@@ -593,7 +596,9 @@ void PathActionDialog::readProcessError()
         }
         text.replace('\n', QString("<br>"));
         this->outputWidget->insertHtml(
-            QString("<span class='stderr'>%1</span>").arg(text));
+            QString(
+                R"(<span class="stderr" title="From the process's standard error channel.">%1</span>)")
+                .arg(text));
     }
 }
 
@@ -650,7 +655,6 @@ void PathActionDialog::changeAskPass(int state)
 
 void PathActionDialog::changePathSelection()
 {
-    qDebug() << "PathActionDialog::changePathSelection called";
     auto newList = QStringList{};
     for (const auto item: this->pathsWidget->selectedItems()) {
         if (!item) {
@@ -660,8 +664,8 @@ void PathActionDialog::changePathSelection()
                               .value<std::filesystem::path>();
         newList << path.c_str();
     }
-    qDebug() << "PathActionDialog::changePathSelection newList:" << newList;
     this->pathList = newList;
+    emit selectedPathsChanged(this, newList);
 }
 
 void PathActionDialog::handleReaderEntry(
