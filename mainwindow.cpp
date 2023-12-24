@@ -853,10 +853,12 @@ auto space(const std::optional<std::string> &mp,
 auto restoreDialogText(const QStringList& sources,
                        const QString& destination) -> QString
 {
-    return QString("Are you sure that you want to restore from"
-                   " the following %1 selected %2 to:\n\n`%3`?")
+    qDebug() << "linked to" << QUrl::fromLocalFile(destination).toString();
+    return QString("Are you sure that you want to restore to "
+                   "<a href=\"%1\">%2</a> the following %3 selected %4?")
+        .arg(QUrl::fromLocalFile(destination).toEncoded(), destination)
         .arg(sources.size())
-        .arg(sources.size() == 1? "path": "paths", destination);
+        .arg(sources.size() == 1? "path": "paths");
 }
 
 }

@@ -29,6 +29,7 @@ constexpr auto zeroSecondsInMS = 0;
 constexpr auto oneSecondsInMS = 1000;
 constexpr auto twoSecondsInMS = 2000;
 constexpr auto indentation = 10;
+constexpr auto minimumDialogWidth = 550;
 
 constexpr auto openMode =
     QProcess::ReadWrite|QProcess::Text|QProcess::Unbuffered;
@@ -117,10 +118,14 @@ PathActionDialog::PathActionDialog(QWidget *parent):
     this->setObjectName("pathActionDialog");
     this->setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle(tr("Path Action Dialog"));
+    this->setMinimumWidth(minimumDialogWidth);
 
     this->splitter->setOrientation(Qt::Vertical);
     this->splitter->setChildrenCollapsible(false);
 
+    this->textLabel->setWordWrap(true);
+    this->textLabel->setTextInteractionFlags(
+        Qt::TextSelectableByMouse|Qt::LinksAccessibleByMouse);
     this->textLabel->setTextFormat(Qt::TextFormat::MarkdownText);
     this->textLabel->setFont([this](){
         QFont font = this->textLabel->font();
