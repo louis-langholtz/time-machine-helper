@@ -12,6 +12,7 @@ constexpr auto sudoPathKey = "sudoPath";
 constexpr auto pathInfoTimeKey = "pathInfoInterval";
 constexpr auto mainWindowGeomKey = "mainWindowGeomtry";
 constexpr auto mainWindowStateKey = "mainWindowState";
+constexpr auto centralWidgetStateKey = "centralWidgetState";
 constexpr auto destinationsTableStateKey = "destinationsTableState";
 constexpr auto machinesTableStateKey = "machinesTableState";
 constexpr auto volumesTableStateKey = "volumesTableState";
@@ -105,6 +106,11 @@ auto mainWindowState() -> QByteArray
     return settings().value(mainWindowStateKey).toByteArray();
 }
 
+auto centralWidgetState() -> QByteArray
+{
+    return settings().value(centralWidgetStateKey).toByteArray();
+}
+
 auto destinationsTableState() -> QByteArray
 {
     return settings().value(destinationsTableStateKey).toByteArray();
@@ -158,6 +164,11 @@ void setMainWindowGeometry(const QByteArray &value)
 void setMainWindowState(const QByteArray &value)
 {
     settings().setValue(mainWindowStateKey, value);
+}
+
+void setCentralWidgetState(const QByteArray &value)
+{
+    settings().setValue(centralWidgetStateKey, value);
 }
 
 void setDestinationsTableState(const QByteArray &value)

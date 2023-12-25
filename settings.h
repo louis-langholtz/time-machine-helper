@@ -20,6 +20,7 @@ auto pathInfoInterval() -> int;
 
 auto mainWindowGeometry() -> QByteArray;
 auto mainWindowState() -> QByteArray;
+auto centralWidgetState() -> QByteArray;
 auto destinationsTableState() -> QByteArray;
 auto machinesTableState() -> QByteArray;
 auto volumesTableState() -> QByteArray;
@@ -33,6 +34,7 @@ void setPathInfoInterval(int value);
 
 void setMainWindowGeometry(const QByteArray& value);
 void setMainWindowState(const QByteArray& value);
+void setCentralWidgetState(const QByteArray& value);
 void setDestinationsTableState(const QByteArray& value);
 void setMachinesTableState(const QByteArray& value);
 void setVolumesTableState(const QByteArray& value);

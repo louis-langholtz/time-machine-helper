@@ -14,15 +14,16 @@
 
 #include "plist_object.h"
 
-QT_BEGIN_NAMESPACE
-namespace Ui { class MainWindow; }
-QT_END_NAMESPACE
-
 class QTableWidget;
 class QTableWidgetItem;
 class QTreeWidgetItem;
 class QTimer;
 class QMessageBox;
+class QLabel;
+class QSplitter;
+class QFrame;
+class QVBoxLayout;
+class QHBoxLayout;
 
 class PathActionDialog;
 
@@ -127,9 +128,39 @@ private:
     void updateVolumeDir(const std::filesystem::path& dir,
                          const QSet<QString>& filenames);
 
+    QAction *actionAbout;
+    QAction *actionQuit;
+    QAction *actionSettings;
+    QSplitter *centralWidget;
+    QFrame *destinationsFrame;
+    QVBoxLayout *destinationsLayout;
+    QLabel *destinationsLabel;
+    QTableWidget *destinationsTable;
+    QFrame *machinesFrame;
+    QVBoxLayout *machinesLayout;
+    QTableWidget *machinesTable;
+    QLabel *machinesLabel;
+    QFrame *volumesFrame;
+    QVBoxLayout *volumesLayout;
+    QLabel *volumesLabel;
+    QTableWidget *volumesTable;
+    QFrame *backupsFrame;
+    QVBoxLayout *backupsLayout;
+    QLabel *backupsLabel;
+    QTableWidget *backupsTable;
+    QFrame *backupsActionsFrame;
+    QHBoxLayout *backupsActionsLayout;
+    QPushButton *deletingPushButton;
+    QPushButton *verifyingPushButton;
+    QPushButton *uniqueSizePushButton;
+    QPushButton *restoringPushButton;
+    QMenuBar *menubar;
+    QMenu *menuActions;
+    QStatusBar *statusbar;
+    QToolBar *toolBar;
+
     QErrorMessage errorMessage;
     QMessageBox *noDestinationsDialog{};
-    Ui::MainWindow *ui{};
     QTimer *destinationsTimer{};
     QTimer *statusTimer{};
     QTimer *pathInfoTimer{};

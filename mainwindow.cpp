@@ -9,6 +9,8 @@
 #include <QtDebug>
 #include <QObject>
 #include <QTreeWidgetItem>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QMessageBox>
 #include <QFileInfo>
 #include <QStringView>
@@ -27,8 +29,25 @@
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QDateTime>
+#include <QtCore/QVariant>
+#include <QtGui/QAction>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QFrame>
+#include <QtWidgets/QHBoxLayout>
+#include <QtWidgets/QHeaderView>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QMainWindow>
+#include <QtWidgets/QMenu>
+#include <QtWidgets/QMenuBar>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QScrollBar>
+#include <QtWidgets/QSplitter>
+#include <QtWidgets/QStatusBar>
+#include <QtWidgets/QTableWidget>
+#include <QtWidgets/QToolBar>
+#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QWidget>
 
-#include "ui_mainwindow.h"
 #include "directoryreader.h"
 #include "itemdefaults.h"
 #include "mainwindow.h"
@@ -124,6 +143,10 @@ constexpr auto tmutilXmlOption      = "-X";
 constexpr auto pathInfoUpdateTime = 10000;
 constexpr auto maxToolTipStringList = 10;
 constexpr auto gigabyte = 1000 * 1000 * 1000;
+constexpr auto defaultSectionSize = 80;
+constexpr auto emptyTableMaxHeight = 50;
+constexpr auto mainWindowSize = QSize{900, 900};
+constexpr auto mainWindowMinimumSize = QSize{800, 400};
 
 // A namespace scoped enum for the destinations table columns...
 namespace DestsColumn {
@@ -861,57 +884,433 @@ auto restoreDialogText(const QStringList& sources,
         .arg(sources.size() == 1? "path": "paths");
 }
 
+struct TableColumnData
+{
+    const char *text{};
+    const char *toolTip{};
+    Qt::Alignment texAlignment{Qt::AlignCenter};
+};
+
+void setHorizontalHeaderItems(QTableWidget *tbl,
+                              const std::map<int, TableColumnData> &columns)
+{
+    tbl->setColumnCount(static_cast<int>(columns.size()));
+    for (const auto& [index, data]: columns) {
+        const auto item = new QTableWidgetItem;
+        item->setText(QCoreApplication::translate("MainWindow", data.text));
+        item->setToolTip(QCoreApplication::translate("MainWindow", data.toolTip));
+        item->setTextAlignment(data.texAlignment);
+        tbl->setHorizontalHeaderItem(index, item);
+    }
+}
+
+auto totalHeight(QTableWidget *tableView) -> int
+{
+    auto result = 0;
+    const auto count = tableView->rowCount();
+    for (int i = 0; i < count; ++i) {
+        if (!tableView->isRowHidden(i)) {
+            result += tableView->rowHeight(i);
+        }
+    }
+    if (tableView->horizontalScrollBar()->isVisible()) {
+        result += tableView->horizontalScrollBar()->height();
+    }
+    if (tableView->horizontalHeader()->isVisible()) {
+        result += tableView->horizontalHeader()->height();
+    }
+    result += tableView->frameWidth() * 2;
+    return std::max(result, emptyTableMaxHeight);
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
-    ui(new Ui::MainWindow),
+    actionAbout(new QAction(this)),
+    actionQuit(new QAction(this)),
+    actionSettings(new QAction(this)),
+    centralWidget(new QSplitter(this)),
+    destinationsFrame(new QFrame(this->centralWidget)),
+    destinationsLayout(new QVBoxLayout()),
+    destinationsLabel(new QLabel(this->destinationsFrame)),
+    destinationsTable(new QTableWidget(this->destinationsFrame)),
+    machinesFrame(new QFrame(this->centralWidget)),
+    machinesLabel(new QLabel(this->machinesFrame)),
+    machinesTable(new QTableWidget(this->machinesFrame)),
+    machinesLayout(new QVBoxLayout()),
+    volumesFrame(new QFrame(this->centralWidget)),
+    volumesLabel(new QLabel(this->volumesFrame)),
+    volumesTable(new QTableWidget(this->volumesFrame)),
+    volumesLayout(new QVBoxLayout()),
+    backupsFrame(new QFrame(this->centralWidget)),
+    backupsLabel(new QLabel(this->backupsFrame)),
+    backupsTable(new QTableWidget(this->backupsFrame)),
+    backupsActionsFrame(new QFrame(this->backupsFrame)),
+    deletingPushButton(new QPushButton(this->backupsActionsFrame)),
+    verifyingPushButton(new QPushButton(this->backupsActionsFrame)),
+    uniqueSizePushButton(new QPushButton(this->backupsActionsFrame)),
+    restoringPushButton(new QPushButton(this->backupsActionsFrame)),
+    backupsActionsLayout(new QHBoxLayout()),
+    backupsLayout(new QVBoxLayout()),
+    menubar(new QMenuBar(this)),
+    menuActions(new QMenu(this->menubar)),
+    statusbar(new QStatusBar(this)),
+    toolBar(new QToolBar(this)),
     destinationsTimer(new QTimer(this)),
     statusTimer(new QTimer(this)),
     pathInfoTimer(new QTimer{this})
 {
+    static const auto destinationsTableColumns = std::map<int, TableColumnData>{
+        {DestsColumn::Name, {"Name", "Destination name, also refered to as a volume name."}},
+        {DestsColumn::ID, {"ID", "Identifier for destination."}},
+        {DestsColumn::Kind, {"Kind", "The kind of the destination."}},
+        {DestsColumn::Mount, {"Mount Point", "Path at which the destination is mounted at."}},
+        {DestsColumn::Use, {"Usage", "Percent usage of the mounted destination."}},
+        {DestsColumn::Capacity,
+         {"Capacity",
+          "Capacity of the destination.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {DestsColumn::Free,
+         {"Free",
+          "Free space within the destination.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {DestsColumn::Action, {"Action", "Backup action for the destination."}},
+        {DestsColumn::BackupStat,
+         {"Backup Status",
+          "Backup phase & more when backup running."}},
+    };
+    static const auto machinesTableColumns = std::map<int, TableColumnData>{
+        {MachinesColumn::Name, {"Name", "Machine name."}},
+        {MachinesColumn::Uuid, {"UUID", "Universal unique ID of the named machine."}},
+        {MachinesColumn::Model, {"Model", "Model of the machine."}},
+        {MachinesColumn::Address, {"Address", "Primary MAC address of machine."}},
+        {MachinesColumn::Destinations,
+         {"Destinations",
+          "Number of destinations where backups for the machine can be found.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {MachinesColumn::Volumes,
+         {"Volumes",
+          "Number of unique volumes in backups for the machines.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {MachinesColumn::Backups,
+         {"Backups",
+          "Number of backups found for the machine.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+    };
+    static const auto volumesTableColumns = std::map<int, TableColumnData>{
+        {VolumesColumn::Name, {"Name", "Volume name."}},
+        {VolumesColumn::Uuid, {"UUID", "Universal unique identifier of the volume."}},
+        {VolumesColumn::Type, {"Type", "File system type of the volume."}},
+        {VolumesColumn::MaxUsed,
+         {"Max Used",
+          "Maximum byte size of the volume in all backups.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {VolumesColumn::Machines,
+         {
+          "Machines",
+          "Number of machines for which this volume is associated with."
+          "This is usually 1, unless the storage has been shared with other machines.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {VolumesColumn::Destinations,
+         {"Destinations",
+          "Number of destinations storing backups of the volume.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {VolumesColumn::Backups,
+         {"Backups",
+          "Number of backups found for the volume.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+    };
+    static const auto backupsTableColumns = std::map<int, TableColumnData>{
+        {BackupsColumn::Name, {"Name", "Backup name."}},
+        {BackupsColumn::Type, {"Type", "Backup daemon snapshot type."}},
+        {BackupsColumn::State, {"State", "Backup state."}},
+        {BackupsColumn::Version,
+         {"Version",
+          "Backup snapshot version.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {BackupsColumn::Number,
+         {"Number",
+          "Backup \"number\".",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {BackupsColumn::Duration,
+         {"Duration",
+          "Backup daemon snapshot time elapsed.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {BackupsColumn::Size,
+         {"Copied Size",
+          "Backup daemon snapshot total bytes copied.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {BackupsColumn::Volumes,
+         {"Volumes",
+          "Number of volumes in the backup.",
+          Qt::AlignTrailing|Qt::AlignVCenter}},
+        {BackupsColumn::Machine,
+         {"Machine",
+          "Machine for which the backup was made."}},
+        {BackupsColumn::Destination,
+         {"Destination",
+          "Time machine destination on which the backup is stored."}},
+    };
+    static const auto margins = QMargins{10, 10, 10, 10};
+    static constexpr auto frameShape = QFrame::StyledPanel;
+
+    // setup toolBar...
+    this->toolBar->setObjectName("toolBar");
+    this->toolBar->setWindowTitle(tr("Tool Bar"));
+
+    // setup menubar...
+    this->menubar->setObjectName("menubar");
+
+    // setup central widget...
+    this->centralWidget->setObjectName("centralwidget");
+    this->centralWidget->setOrientation(Qt::Vertical);
+    this->centralWidget->setChildrenCollapsible(false);
+
+    // setup MainWindow elements...
+
+    this->setObjectName("MainWindow");
+    this->setWindowTitle(tr("Time Machine Helper"));
+    this->resize(mainWindowSize);
+    this->setMinimumSize(mainWindowMinimumSize);
+    this->setUnifiedTitleAndToolBarOnMac(true);
+    this->setMenuBar(this->menubar);
+    this->setCentralWidget(this->centralWidget);
+    this->setStatusBar(this->statusbar);
+    this->addToolBar(Qt::TopToolBarArea, this->toolBar);
     this->fixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
-    this->ui->setupUi(this);
+    // setup destinations elements...
 
-    this->ui->deletingPushButton->setStyleSheet(
+    this->destinationsLabel->setObjectName("destinationsLabel");
+    this->destinationsLabel->setAlignment(Qt::AlignVCenter|Qt::AlignLeft);
+    this->destinationsLabel->setText(tr("Destinations"));
+    this->destinationsLabel->setToolTip(tr("Table of destinations."));
+    this->destinationsLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    this->destinationsTable->setObjectName("destinationsTable");
+    this->destinationsTable->setToolTip(tr("Destinations table."));
+    setHorizontalHeaderItems(this->destinationsTable, destinationsTableColumns);
+    this->destinationsTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    this->destinationsTable->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    this->destinationsTable->setTextElideMode(Qt::ElideLeft);
+    this->destinationsTable->setSortingEnabled(true);
+    this->destinationsTable->setWordWrap(false);
+    this->destinationsTable->horizontalHeader()->setCascadingSectionResizes(true);
+    this->destinationsTable->horizontalHeader()->setDefaultSectionSize(defaultSectionSize);
+    this->destinationsTable->horizontalHeader()->setStretchLastSection(true);
+    this->destinationsTable->verticalHeader()->setVisible(false);
+    this->destinationsTable->setMaximumHeight(emptyTableMaxHeight);
+
+    this->destinationsLayout->setObjectName("destinationsLayout");
+    this->destinationsLayout->setContentsMargins(margins);
+    this->destinationsLayout->addWidget(this->destinationsLabel);
+    this->destinationsLayout->addWidget(this->destinationsTable);
+    this->destinationsLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+
+    this->destinationsFrame->setObjectName("destinationsFrame");
+    this->destinationsFrame->setFrameShape(frameShape);
+    this->destinationsFrame->setFrameShadow(QFrame::Plain);
+    this->destinationsFrame->setLayout(this->destinationsLayout);
+    this->destinationsFrame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    // setup machines elements...
+
+    this->machinesLabel->setObjectName("machinesLabel");
+    this->machinesLabel->setText(tr("Machines"));
+    this->machinesLabel->setToolTip(tr("Table of source machines."));
+    this->machinesLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    this->machinesTable->setObjectName("machinesTable");
+    this->machinesTable->setToolTip(tr("Source machines table."));
+    setHorizontalHeaderItems(this->machinesTable, machinesTableColumns);
+    this->machinesTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    this->machinesTable->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    this->machinesTable->setTextElideMode(Qt::ElideLeft);
+    this->machinesTable->setSortingEnabled(true);
+    this->machinesTable->setWordWrap(false);
+    this->machinesTable->horizontalHeader()->setCascadingSectionResizes(true);
+    this->machinesTable->horizontalHeader()->setDefaultSectionSize(defaultSectionSize);
+    this->machinesTable->horizontalHeader()->setStretchLastSection(true);
+    this->machinesTable->verticalHeader()->setVisible(false);
+    this->machinesTable->setMaximumHeight(emptyTableMaxHeight);
+
+    this->machinesLayout->setObjectName("machinesLayout");
+    this->machinesLayout->setContentsMargins(margins);
+    this->machinesLayout->addWidget(this->machinesLabel);
+    this->machinesLayout->addWidget(this->machinesTable);
+    this->machinesLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+
+    this->machinesFrame->setObjectName("machinesFrame");
+    this->machinesFrame->setFrameShape(frameShape);
+    this->machinesFrame->setFrameShadow(QFrame::Plain);
+    this->machinesFrame->setLayout(this->machinesLayout);
+    this->machinesFrame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    // setup volumes elements...
+
+    this->volumesLabel->setObjectName("volumesLabel");
+    this->volumesLabel->setText(tr("Volumes"));
+    this->volumesLabel->setToolTip(tr("Table of source volumes."));
+    this->volumesLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    this->volumesTable->setObjectName("volumesTable");
+    this->volumesTable->setToolTip(
+        tr("Source volumes table showing each uniquely identified volume per row."));
+    setHorizontalHeaderItems(this->volumesTable, volumesTableColumns);
+    this->volumesTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    this->volumesTable->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    this->volumesTable->setTextElideMode(Qt::ElideLeft);
+    this->volumesTable->setSortingEnabled(true);
+    this->volumesTable->setWordWrap(false);
+    this->volumesTable->horizontalHeader()->setCascadingSectionResizes(true);
+    this->volumesTable->horizontalHeader()->setDefaultSectionSize(defaultSectionSize);
+    this->volumesTable->horizontalHeader()->setProperty("showSortIndicator", QVariant(true));
+    this->volumesTable->horizontalHeader()->setStretchLastSection(true);
+    this->volumesTable->verticalHeader()->setVisible(false);
+    this->volumesTable->setMaximumHeight(emptyTableMaxHeight);
+
+    this->volumesLayout->setObjectName("volumesLayout");
+    this->volumesLayout->setContentsMargins(margins);
+    this->volumesLayout->addWidget(this->volumesLabel);
+    this->volumesLayout->addWidget(this->volumesTable);
+    this->volumesLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+
+    this->volumesFrame->setObjectName("volumesFrame");
+    this->volumesFrame->setFrameShape(frameShape);
+    this->volumesFrame->setFrameShadow(QFrame::Plain);
+    this->volumesFrame->setLayout(this->volumesLayout);
+    this->volumesFrame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    // setup backups elements...
+
+    this->backupsLabel->setObjectName("backupsLabel");
+    this->backupsLabel->setText(tr("Backups"));
+    this->backupsLabel->setToolTip(tr("Table of backups."));
+    this->backupsLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    this->backupsTable->setObjectName("backupsTable");
+    this->backupsTable->setToolTip(tr("Backups table showing rows of backups."));
+    setHorizontalHeaderItems(this->backupsTable, backupsTableColumns);
+    this->backupsTable->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    this->backupsTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    this->backupsTable->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    this->backupsTable->setTextElideMode(Qt::ElideLeft);
+    this->backupsTable->setWordWrap(false);
+    this->backupsTable->horizontalHeader()->setCascadingSectionResizes(true);
+    this->backupsTable->horizontalHeader()->setDefaultSectionSize(defaultSectionSize);
+    this->backupsTable->horizontalHeader()->setProperty("showSortIndicator", QVariant(true));
+    this->backupsTable->horizontalHeader()->setStretchLastSection(true);
+    this->backupsTable->verticalHeader()->setVisible(false);
+
+    this->deletingPushButton->setObjectName("deletingPushButton");
+    this->deletingPushButton->setText(tr("Delete..."));
+    this->deletingPushButton->setToolTip(tr("Deletes selected backups."));
+
+    this->verifyingPushButton->setObjectName("verifyingPushButton");
+    this->verifyingPushButton->setText(tr("Verify..."));
+    this->verifyingPushButton->setToolTip(tr(
+        "Verifies checksums of selected backups. "
+        "As admin, will allow verification of otherwise restricted components."));
+
+    this->uniqueSizePushButton->setObjectName("uniqueSizePushButton");
+    this->uniqueSizePushButton->setText(tr("Unique Size..."));
+    this->uniqueSizePushButton->setToolTip(tr("Unique size of paths within a backup volume."));
+
+    this->restoringPushButton->setObjectName("restoringPushButton");
+    this->restoringPushButton->setText(tr("Restore..."));
+    this->restoringPushButton->setToolTip(tr("Restores selected paths to a chosen path."));
+
+    this->backupsActionsLayout->setObjectName("backupsActionsLayout");
+    this->backupsActionsLayout->setContentsMargins(0, 0, 0, 0);
+    this->backupsActionsLayout->addWidget(this->deletingPushButton);
+    this->backupsActionsLayout->addWidget(this->verifyingPushButton);
+    this->backupsActionsLayout->addWidget(this->uniqueSizePushButton);
+    this->backupsActionsLayout->addWidget(this->restoringPushButton);
+
+    this->backupsActionsFrame->setObjectName("backupsActionsFrame");
+    //this->backupsActionsFrame->setMinimumSize(QSize(0, 40));
+    this->backupsActionsFrame->setFrameShape(QFrame::NoFrame);
+    this->backupsActionsFrame->setFrameShadow(QFrame::Plain);
+    this->backupsActionsFrame->setLayout(this->backupsActionsLayout);
+    this->backupsActionsFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+    this->backupsLayout->setObjectName("backupsLayout");
+    this->backupsLayout->setContentsMargins(margins);
+    this->backupsLayout->addWidget(this->backupsLabel);
+    this->backupsLayout->addWidget(this->backupsTable);
+    this->backupsLayout->addWidget(this->backupsActionsFrame);
+    this->backupsLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+
+    this->backupsFrame->setObjectName("backupsFrame");
+    this->backupsFrame->setFrameShape(frameShape);
+    this->backupsFrame->setFrameShadow(QFrame::Plain);
+    this->backupsFrame->setLayout(this->backupsLayout);
+    this->backupsFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+
+    // setup splitter...
+
+    this->centralWidget->addWidget(this->destinationsFrame);
+    this->centralWidget->addWidget(this->machinesFrame);
+    this->centralWidget->addWidget(this->volumesFrame);
+    this->centralWidget->addWidget(this->backupsFrame);
+    this->centralWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+    this->actionAbout->setObjectName("actionAbout");
+    this->actionAbout->setText(tr("About"));
+
+    this->actionQuit->setObjectName("actionQuit");
+    this->actionQuit->setText(tr("Quit"));
+
+    this->actionSettings->setObjectName("actionSettings");
+    this->actionSettings->setText(tr("Preferences"));
+
+    this->menubar->addAction(menuActions->menuAction());
+    //this->menubar->setGeometry(QRect(0, 0, 900, 24));
+
+    this->menuActions->setObjectName("menuActions");
+    this->menuActions->addAction(this->actionAbout);
+    this->menuActions->addAction(this->actionSettings);
+    this->menuActions->setTitle(tr("File"));
+
+    this->deletingPushButton->setStyleSheet(
         disabledAdminButtonStyle);
-    this->ui->deletingPushButton->setDisabled(true);
-    this->ui->uniqueSizePushButton->setDisabled(true);
-    this->ui->restoringPushButton->setDisabled(true);
-    this->ui->verifyingPushButton->setDisabled(true);
-    this->ui->backupsTable->
+    this->deletingPushButton->setDisabled(true);
+    this->uniqueSizePushButton->setDisabled(true);
+    this->restoringPushButton->setDisabled(true);
+    this->verifyingPushButton->setDisabled(true);
+    this->backupsTable->
         setSelectionMode(QAbstractItemView::SelectionMode::MultiSelection);
-    this->ui->backupsTable->setMouseTracking(true);
-    this->ui->backupsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    this->backupsTable->setMouseTracking(true);
+    this->backupsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
 
     this->tmutilPath = Settings::tmutilPath();
     this->sudoPath = Settings::sudoPath();
 
-    this->ui->destinationsTable->horizontalHeader()
+    this->destinationsTable->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::Interactive);
 
-    connect(this->ui->actionAbout, &QAction::triggered,
+    connect(this->actionAbout, &QAction::triggered,
             this, &MainWindow::showAboutDialog);
-    connect(this->ui->actionSettings, &QAction::triggered,
+    connect(this->actionSettings, &QAction::triggered,
             this, &MainWindow::showSettingsDialog);
-    connect(this->ui->deletingPushButton, &QPushButton::pressed,
+    connect(this->deletingPushButton, &QPushButton::pressed,
             this, &MainWindow::deleteSelectedBackups);
-    connect(this->ui->uniqueSizePushButton, &QPushButton::pressed,
+    connect(this->uniqueSizePushButton, &QPushButton::pressed,
             this, &MainWindow::uniqueSizeSelectedPaths);
-    connect(this->ui->restoringPushButton, &QPushButton::pressed,
+    connect(this->restoringPushButton, &QPushButton::pressed,
             this, &MainWindow::restoreSelectedPaths);
-    connect(this->ui->verifyingPushButton, &QPushButton::pressed,
+    connect(this->verifyingPushButton, &QPushButton::pressed,
             this, &MainWindow::verifySelectedBackups);
 
-    connect(this->ui->destinationsTable, &QTableWidget::itemChanged,
+    connect(this->destinationsTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleItemChanged);
-    connect(this->ui->machinesTable, &QTableWidget::itemChanged,
+    connect(this->machinesTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleItemChanged);
-    connect(this->ui->volumesTable, &QTableWidget::itemChanged,
+    connect(this->volumesTable, &QTableWidget::itemChanged,
             this, &MainWindow::handleItemChanged);
 
-    connect(this->ui->backupsTable, &QTableWidget::itemSelectionChanged,
+    connect(this->backupsTable, &QTableWidget::itemSelectionChanged,
             this, &MainWindow::selectedBackupsChanged);
 
     connect(this->destinationsTimer, &QTimer::timeout,
@@ -926,10 +1325,7 @@ MainWindow::MainWindow(QWidget *parent):
     QTimer::singleShot(0, this, &MainWindow::checkTmStatus);
 }
 
-MainWindow::~MainWindow()
-{
-    delete this->ui;
-}
+MainWindow::~MainWindow() = default;
 
 void MainWindow::updateMountPointPaths()
 {
@@ -1051,11 +1447,11 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
 
     auto backupsToDelete = QSet<QString>{};
     auto rowsToDelete = std::vector<int>{};
-    const auto rows = this->ui->backupsTable->rowCount();
+    const auto rows = this->backupsTable->rowCount();
     for (auto row = 0; row < rows; ++row) {
-        const auto nameItem = this->ui->backupsTable->item(row, BackupsColumn::Name);
-        const auto machineItem = this->ui->backupsTable->item(row, BackupsColumn::Machine);
-        const auto destItem = this->ui->backupsTable->item(row, BackupsColumn::Destination);
+        const auto nameItem = this->backupsTable->item(row, BackupsColumn::Name);
+        const auto machineItem = this->backupsTable->item(row, BackupsColumn::Machine);
+        const auto destItem = this->backupsTable->item(row, BackupsColumn::Destination);
         if (!filenames.contains(nameItem->text()) &&
             (machineItem->text() == machName) &&
             (destItem->text() == destName)) {
@@ -1064,12 +1460,12 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
         }
     }
     for (auto row: rowsToDelete) {
-        this->ui->backupsTable->removeRow(row);
+        this->backupsTable->removeRow(row);
     }
     const auto deletedCount = static_cast<int>(rowsToDelete.size());
     if (deletedCount > 0) {
         qDebug() << "MainWindow::reportDir deleted would be" << deletedCount;
-        const auto tbl = this->ui->volumesTable;
+        const auto tbl = this->volumesTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
             if (const auto item = tbl->item(row, VolumesColumn::Machines)) {
@@ -1082,10 +1478,10 @@ void MainWindow::updateMachineDir(const std::filesystem::path& dir,
             }
         }
     }
-    if (const auto foundRow = findRow(*this->ui->machinesTable,
+    if (const auto foundRow = findRow(*this->machinesTable,
                                       {{MachinesColumn::Name, machName}});
         foundRow >= 0) {
-        if (const auto item = this->ui->machinesTable->item(
+        if (const auto item = this->machinesTable->item(
                 foundRow, MachinesColumn::Backups)) {
             auto set = item->data(Qt::UserRole).value<std::set<QString>>();
             erase(set, backupsToDelete);
@@ -1106,14 +1502,14 @@ void MainWindow::updateVolumeDir(const std::filesystem::path& dir,
     const auto machName = QString::fromStdString(removeLast(first, last));
     (void)removeLast(first, last);
     const auto destName = QString::fromStdString(removeLast(first, last));
-    const auto foundRow = findRow(*this->ui->backupsTable,
+    const auto foundRow = findRow(*this->backupsTable,
                                   {{BackupsColumn::Name, backupName},
                                    {BackupsColumn::Machine, machName},
                                    {BackupsColumn::Destination, destName}});
     if (foundRow < 0) {
         return;
     }
-    const auto item = this->ui->backupsTable->item(foundRow, BackupsColumn::Volumes);
+    const auto item = this->backupsTable->item(foundRow, BackupsColumn::Volumes);
     if (!item) {
         return;
     }
@@ -1185,7 +1581,7 @@ void MainWindow::updateMachines(
     const auto machName = QString::fromStdString(name);
     const auto uuid = machineUuid.value_or(QString{});
 
-    const auto tbl = this->ui->machinesTable;
+    const auto tbl = this->machinesTable;
     const SortingDisabler disableSort{tbl};
     const auto res = this->machineMap.emplace(
         machineUuid.value_or(machName),
@@ -1240,6 +1636,7 @@ void MainWindow::updateMachines(
         item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(firstToLastToolTip(set));
     }
+    tbl->setMaximumHeight(totalHeight(tbl));
 }
 
 void MainWindow::updateBackups(const std::filesystem::path& path,
@@ -1257,7 +1654,7 @@ void MainWindow::updateBackups(const std::filesystem::path& path,
         return;
     }
 
-    const auto tbl = this->ui->backupsTable;
+    const auto tbl = this->backupsTable;
     const SortingDisabler disableSort{tbl};
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -1344,7 +1741,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         qWarning() << "MainWindow::updateVolumes empty name?";
         return;
     }
-    const auto tbl = this->ui->volumesTable;
+    const auto tbl = this->volumesTable;
     const SortingDisabler disableSort{tbl};
     const auto font =
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -1390,7 +1787,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(toStringList(set, maxToolTipStringList).join(", "));
         {
-            const auto machTbl = this->ui->machinesTable;
+            const auto machTbl = this->machinesTable;
             const SortingDisabler disableMachSort{machTbl};
             const auto mr =
                 findRow(*machTbl, {{MachinesColumn::Name, machName}});
@@ -1422,6 +1819,7 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
         item->setData(Qt::DisplayRole, qsizetype(set.size()));
         item->setToolTip(firstToLastToolTip(set));
     }
+    tbl->setMaximumHeight(totalHeight(tbl));
 }
 
 void MainWindow::updatePathInfo(const std::string& pathName)
@@ -1441,7 +1839,7 @@ void MainWindow::updatePathInfo(const std::string& pathName)
 void MainWindow::deleteSelectedBackups()
 {
     const auto selectedPaths = toStringList(
-        this->ui->backupsTable->selectedItems());
+        this->backupsTable->selectedItems());
     qInfo() << "deleteSelectedBackups called for" << selectedPaths;
 
     const auto dialog = new PathActionDialog{this};
@@ -1473,7 +1871,7 @@ void MainWindow::deleteSelectedBackups()
 void MainWindow::uniqueSizeSelectedPaths()
 {
     const auto selectedPaths = toStringList(
-        this->ui->backupsTable->selectedItems());
+        this->backupsTable->selectedItems());
     qInfo() << "uniqueSizeSelectedPaths called for" << selectedPaths;
 
     // Run as root to avoid error: "Not inside a machine directory"!
@@ -1497,7 +1895,7 @@ void MainWindow::uniqueSizeSelectedPaths()
 void MainWindow::restoreSelectedPaths()
 {
     const auto selectedPaths = toStringList(
-        this->ui->backupsTable->selectedItems());
+        this->backupsTable->selectedItems());
     qInfo() << "restoreSelectedPaths called for" << selectedPaths;
 
     QFileDialog dstDialog{this};
@@ -1550,7 +1948,7 @@ void MainWindow::handleRestoreSelectedPathsChanged( // NOLINT(readability-conver
 void MainWindow::verifySelectedBackups()
 {
     const auto selectedPaths = toStringList(
-        this->ui->backupsTable->selectedItems());
+        this->backupsTable->selectedItems());
     qInfo() << "verifySelectedPaths called for" << selectedPaths;
 
     const auto dialog = new PathActionDialog{this};
@@ -1571,16 +1969,16 @@ void MainWindow::verifySelectedBackups()
 
 void MainWindow::selectedBackupsChanged()
 {
-    const auto selected = this->ui->backupsTable->selectedItems();
+    const auto selected = this->backupsTable->selectedItems();
     const auto empty = selected.isEmpty();
-    this->ui->deletingPushButton->setStyleSheet(
+    this->deletingPushButton->setStyleSheet(
         empty
             ? disabledAdminButtonStyle
             : enabledAdminButtonStyle);
-    this->ui->deletingPushButton->setEnabled(!empty);
-    this->ui->verifyingPushButton->setEnabled(!empty);
-    this->ui->uniqueSizePushButton->setEnabled(!empty);
-    this->ui->restoringPushButton->setEnabled(!empty);
+    this->deletingPushButton->setEnabled(!empty);
+    this->verifyingPushButton->setEnabled(!empty);
+    this->uniqueSizePushButton->setEnabled(!empty);
+    this->restoringPushButton->setEnabled(!empty);
 }
 
 void MainWindow::showAboutDialog()
@@ -1672,7 +2070,7 @@ void MainWindow::handleTmDestinationsError(int error, const QString &text)
 
 void MainWindow::showStatus(const QString& status)
 {
-    this->ui->statusbar->showMessage(status);
+    this->statusbar->showMessage(status);
 }
 
 void MainWindow::handleQueryFailedToStart(const QString &text)
@@ -1732,11 +2130,11 @@ void MainWindow::handleGotDestinations(
     const std::vector<plist_dict>& destinations)
 {
     const auto rowCount = int(destinations.size());
-    const auto tbl = this->ui->destinationsTable;
+    const auto tbl = this->destinationsTable;
     const SortingDisabler disableSort{tbl};
     tbl->setRowCount(rowCount);
     if (rowCount == 0) {
-        this->ui->destinationsLabel->setText(tr("Destinations - none appear setup!"));
+        this->destinationsLabel->setText(tr("Destinations - none appear setup!"));
         this->errorMessage.showMessage(
             QString("%1 %2")
                 .arg("No destinations appear setup.",
@@ -1749,7 +2147,7 @@ void MainWindow::handleGotDestinations(
         QFontDatabase::systemFont(QFontDatabase::FixedFont);
     const auto smallFont =
         QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
-    this->ui->destinationsLabel->setText(tr("Destinations"));
+    this->destinationsLabel->setText(tr("Destinations"));
     auto mountPoints = std::map<std::string, plist_dict>{};
     auto row = 0;
     for (const auto& destination: destinations) {
@@ -1846,6 +2244,7 @@ void MainWindow::handleGotDestinations(
         }
         ++row;
     }
+    tbl->setMaximumHeight(totalHeight(tbl));
     this->updateMountPointsView(mountPoints);
 }
 
@@ -1941,7 +2340,7 @@ void MainWindow::handleTmStatus(const plist_object &plist)
         return;
     }
     this->lastStatus = *dict;
-    const auto tbl = this->ui->destinationsTable;
+    const auto tbl = this->destinationsTable;
     const auto rows = tbl->rowCount();
     for (auto row = 0; row < rows; ++row) {
         const auto mpItem = tbl->item(row, DestsColumn::Mount);
@@ -2030,13 +2429,13 @@ void MainWindow::handleProgramFinished(
 void MainWindow::handleItemChanged(QTableWidgetItem *)
 {
     const auto showDests =
-        checkedTextStrings(*this->ui->destinationsTable, 0);
+        checkedTextStrings(*this->destinationsTable, 0);
     const auto showMachs =
-        checkedTextStrings(*this->ui->machinesTable, MachinesColumn::Name);
+        checkedTextStrings(*this->machinesTable, MachinesColumn::Name);
     const auto showVols =
-        checkedTextStrings(*this->ui->volumesTable, VolumesColumn::Name);
+        checkedTextStrings(*this->volumesTable, VolumesColumn::Name);
     {
-        const auto tbl = this->ui->backupsTable;
+        const auto tbl = this->backupsTable;
         const auto count = tbl->rowCount();
         for (auto row = 0; row < count; ++row) {
             auto hide = false;
@@ -2076,15 +2475,16 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     qDebug() << "saving geometry & state";
     Settings::setBackupsTableState(
-        this->ui->backupsTable->horizontalHeader()->saveState());
+        this->backupsTable->horizontalHeader()->saveState());
     Settings::setVolumesTableState(
-        this->ui->volumesTable->horizontalHeader()->saveState());
+        this->volumesTable->horizontalHeader()->saveState());
     Settings::setMachinesTableState(
-        this->ui->machinesTable->horizontalHeader()->saveState());
+        this->machinesTable->horizontalHeader()->saveState());
     Settings::setDestinationsTableState(
-        this->ui->destinationsTable->horizontalHeader()->saveState());
-    Settings::setMainWindowState(saveState());
-    Settings::setMainWindowGeometry(saveGeometry());
+        this->destinationsTable->horizontalHeader()->saveState());
+    Settings::setCentralWidgetState(this->centralWidget->saveState());
+    Settings::setMainWindowState(this->saveState());
+    Settings::setMainWindowGeometry(this->saveGeometry());
     QMainWindow::closeEvent(event);
 }
 
@@ -2095,21 +2495,24 @@ void MainWindow::readSettings()
         qDebug() << "unable to restore previous geometry";
     }
     if (!this->restoreState(Settings::mainWindowState())) {
-        qDebug() << "unable to restore previous state";
+        qDebug() << "unable to restore previous mainWindow state";
     }
-    if (!this->ui->destinationsTable->horizontalHeader()
+    if (!this->centralWidget->restoreState(Settings::centralWidgetState())) {
+        qDebug() << "unable to restore previous centralWidget state";
+    }
+    if (!this->destinationsTable->horizontalHeader()
              ->restoreState(Settings::destinationsTableState())) {
         qDebug() << "unable to restore previous destinations table state";
     }
-    if (!this->ui->machinesTable->horizontalHeader()
+    if (!this->machinesTable->horizontalHeader()
              ->restoreState(Settings::machinesTableState())) {
         qDebug() << "unable to restore previous machines table state";
     }
-    if (!this->ui->volumesTable->horizontalHeader()
+    if (!this->volumesTable->horizontalHeader()
              ->restoreState(Settings::volumesTableState())) {
         qDebug() << "unable to restore previous volumes table state";
     }
-    if (!this->ui->backupsTable->horizontalHeader()
+    if (!this->backupsTable->horizontalHeader()
              ->restoreState(Settings::backupsTableState())) {
         qDebug() << "unable to restore previous backups table state";
     }
