@@ -26,6 +26,7 @@ class QVBoxLayout;
 class QHBoxLayout;
 
 class PathActionDialog;
+class DirectoryReader;
 
 struct PathInfo {
     std::filesystem::file_status status;
@@ -170,6 +171,7 @@ private:
     std::map<std::string, plist_dict> mountMap;
     std::map<QString, MachineInfo> machineMap;
     std::map<std::filesystem::path, PathInfo> pathInfoMap;
+    std::map<std::string, DirectoryReader*> directoryReaders;
     plist_dict lastStatus;
 };
 

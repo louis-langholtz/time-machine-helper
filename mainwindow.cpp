@@ -31,22 +31,23 @@
 #include <QDateTime>
 #include <QtCore/QVariant>
 #include <QtGui/QAction>
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QFrame>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QHeaderView>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QMainWindow>
-#include <QtWidgets/QMenu>
-#include <QtWidgets/QMenuBar>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QScrollBar>
-#include <QtWidgets/QSplitter>
-#include <QtWidgets/QStatusBar>
-#include <QtWidgets/QTableWidget>
-#include <QtWidgets/QToolBar>
-#include <QtWidgets/QVBoxLayout>
-#include <QtWidgets/QWidget>
+#include <QApplication>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QMainWindow>
+#include <QMenu>
+#include <QMenuBar>
+#include <QPushButton>
+#include <QScrollBar>
+#include <QSplitter>
+#include <QStatusBar>
+#include <QTableWidget>
+#include <QToolBar>
+#include <QVBoxLayout>
+#include <QWidget>
+#include <QThreadPool>
 
 #include "directoryreader.h"
 #include "itemdefaults.h"
@@ -1824,16 +1825,25 @@ void MainWindow::updateVolumes(const std::filesystem::path& path,
 
 void MainWindow::updatePathInfo(const std::string& pathName)
 {
-    auto *workerThread = new DirectoryReader(pathName, this);
-    connect(workerThread, &DirectoryReader::ended,
+    const auto [it, inserted] = this->directoryReaders.emplace(pathName, nullptr);
+    if (it->second) {
+        qDebug() << "blocking reader for" << pathName;
+        return;
+    }
+    it->second = new DirectoryReader(pathName, this);
+    connect(it->second, &DirectoryReader::ended,
             this, &MainWindow::handleDirectoryReaderEnded);
-    connect(workerThread, &DirectoryReader::entry,
+    connect(it->second, &DirectoryReader::entry,
             this, &MainWindow::handleDirectoryReaderEntry);
-    connect(workerThread, &DirectoryReader::finished,
-            workerThread, &QObject::deleteLater);
+    connect(it->second, &DirectoryReader::finished,
+            it->second, &QObject::deleteLater);
+    connect(it->second, &DirectoryReader::destroyed,
+            this, [it](QObject *){
+        it->second = nullptr;
+    });
     connect(this, &MainWindow::destroyed,
-            workerThread, &DirectoryReader::quit);
-    workerThread->start();
+            it->second, &DirectoryReader::quit);
+    it->second->start();
 }
 
 void MainWindow::deleteSelectedBackups()
