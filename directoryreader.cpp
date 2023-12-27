@@ -202,11 +202,16 @@ void DirectoryReader::setReadAttributes(bool value)
     this->readAttrs = value;
 }
 
-void DirectoryReader::run() {
+void DirectoryReader::run()
+{
+    QThread::setTerminationEnabled(true);
+    this->read();
+}
+
+void DirectoryReader::read()
+{
     using std::filesystem::directory_iterator;
     using std::filesystem::directory_options;
-
-    QThread::setTerminationEnabled(true);
 
     auto ec = std::error_code{};
     const auto options = directory_options::skip_permission_denied;
@@ -215,59 +220,71 @@ void DirectoryReader::run() {
         emit ended(this->directory, ec, {});
         return;
     }
+    read(it);
+}
 
+void DirectoryReader::read(const std::filesystem::directory_iterator& it)
+{
     auto filenames = QSet<QString>{};
-    for (const auto& dirEntryIter: it) {
-        if (this->isInterruptionRequested()) {
+    for (const auto& dirEntry: it) {
+        if (this->isInterruptionRequested() || !read(dirEntry, filenames)) {
             return;
         }
-        const auto& path = dirEntryIter.path();
-        const auto filename = path.filename().string();
-        if (!okay(this->filters, filename)) {
-            continue;
-        }
-        const auto status = (this->filters & QDir::NoSymLinks)
-                                ? dirEntryIter.symlink_status(ec)
-                                : dirEntryIter.status(ec);
-        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-            continue;
-        }
-        if (ec) {
-            qWarning() << "can't get status"
-                       << ec.message()
-                       << ", path:" << path.c_str();
-        }
-        if (!okay(this->filters, status)) {
-            continue;
-        }
-        if (this->readAttrs) {
-            const auto xattrNames = readAttributeNames(path, ec);
-            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-                continue;
-            }
-            auto xattrMap = QMap<QString, QByteArray>{};
-            for (const auto& attrName: xattrNames) {
-                if (this->isInterruptionRequested()) {
-                    return;
-                }
-                const auto buffer = readAttribute(path, attrName, ec);
-                if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-                    break;
-                }
-                if (ec) {
-                    continue;
-                }
-                xattrMap.insert(QString::fromStdString(attrName), buffer);
-            }
-            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
-                continue;
-            }
-            emit entry(path, status, xattrMap);
-        }
-        else {
-            emit entry(path, status, QMap<QString,QByteArray>{});
-        }
-        filenames.insert(QString::fromStdString(filename));
     }
     emit ended(this->directory, std::error_code{}, filenames);
+}
+
+auto DirectoryReader::read(const std::filesystem::directory_entry &dirEntry,
+                           QSet<QString> &filenames)
+    -> bool
+{
+    auto ec = std::error_code{};
+    const auto& path = dirEntry.path();
+    const auto filename = path.filename().string();
+    if (!okay(this->filters, filename)) {
+        return true;
+    }
+    const auto status = (this->filters & QDir::NoSymLinks)
+                            ? dirEntry.symlink_status(ec)
+                            : dirEntry.status(ec);
+    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+        return true;
+    }
+    if (ec) {
+        qWarning() << "can't get status"
+                   << ec.message()
+                   << ", path:" << path.c_str();
+    }
+    if (!okay(this->filters, status)) {
+        return true;
+    }
+    if (this->readAttrs) {
+        auto xattrMap = QMap<QString, QByteArray>{};
+        const auto xattrNames = readAttributeNames(path, ec);
+        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+            return true;
+        }
+        for (const auto& attrName: xattrNames) {
+            if (this->isInterruptionRequested()) {
+                return false;
+            }
+            const auto buffer = readAttribute(path, attrName, ec);
+            if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+                break;
+            }
+            if (ec) {
+                continue;
+            }
+            xattrMap.insert(QString::fromStdString(attrName), buffer);
+        }
+        if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+            return true;
+        }
+        emit entry(path, status, xattrMap);
+    }
+    else {
+        emit entry(path, status, QMap<QString,QByteArray>{});
+    }
+    filenames.insert(QString::fromStdString(filename));
+    return true;
 }

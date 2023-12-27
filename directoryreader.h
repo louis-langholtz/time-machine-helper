@@ -33,15 +33,19 @@ public:
     void setReadAttributes(bool value);
 
 signals:
-    void entry(const std::filesystem::path& path,
-               const std::filesystem::file_status& status,
-               const QMap<QString, QByteArray>& attrs);
-    void ended(const std::filesystem::path& dir,
+    void entry(const std::filesystem::path &path,
+               const std::filesystem::file_status &status,
+               const QMap<QString, QByteArray> &attrs);
+    void ended(const std::filesystem::path &dir,
                std::error_code ec,
-               const QSet<QString>& filenames);
+               const QSet<QString> &filenames);
 
 private:
     void run() override;
+    void read();
+    void read(const std::filesystem::directory_iterator &it);
+    auto read(const std::filesystem::directory_entry &dirEntry,
+              QSet<QString> &filenames) -> bool;
 
     std::filesystem::path directory;
     QDir::Filters filters{QDir::Dirs|QDir::NoSymLinks};
