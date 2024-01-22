@@ -16,6 +16,7 @@
 
 class QTableWidget;
 class QTableWidgetItem;
+class QThreadPool;
 class QTreeWidgetItem;
 class QTimer;
 class QMessageBox;
@@ -85,6 +86,9 @@ public:
                               const std::filesystem::path& path);
 
 private:
+    // track: physical volumes, volumes (in backups), backups,
+    //   machines, & destinations.
+
     void selectedBackupsChanged();
     void handleQueryFailedToStart(const QString &text);
     void handleTmutilPathChange(const QString &path);
@@ -107,7 +111,7 @@ private:
                                    const QString& text);
     void handleProgramFinished(
         const QString& program,
-        const QStringList& arguments,
+        const QStringList& args,
         int code,
         int status);
     void handleDestinationAction(const QString& actionName,
@@ -128,6 +132,9 @@ private:
                           const QSet<QString>& filenames);
     void updateVolumeDir(const std::filesystem::path& dir,
                          const QSet<QString>& filenames);
+
+    /// @brief Thread pool just for directory reading.
+    QThreadPool *directoryReaderThreadPool;
 
     QAction *actionAbout;
     QAction *actionQuit;

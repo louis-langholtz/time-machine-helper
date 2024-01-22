@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QTreeWidget>
 #include <QFontDatabase>
+#include <QThreadPool>
 
 #include "directoryreader.h"
 #include "pathactiondialog.h"
@@ -774,16 +775,15 @@ void PathActionDialog::expandPath(QTreeWidgetItem *item)
 {
     const auto path = item->data(0, Qt::UserRole).value<std::filesystem::path>();
     qDebug() << "PathActionDialog::expandPath" << path;
-    auto *workerThread = new DirectoryReader(path, this);
-    workerThread->setReadAttributes(false);
-    workerThread->setFilter({QDir::AllEntries});
-    connect(workerThread, &DirectoryReader::entry,
+    auto *reader = new DirectoryReader(path, this);
+    reader->setAutoDelete(true);
+    reader->setReadAttributes(false);
+    reader->setFilter({QDir::AllEntries});
+    connect(reader, &DirectoryReader::entry,
             this, &PathActionDialog::handleReaderEntry);
-    connect(workerThread, &DirectoryReader::finished,
-            workerThread, &QObject::deleteLater);
     connect(this, &PathActionDialog::destroyed,
-            workerThread, &DirectoryReader::quit);
-    workerThread->start();
+            reader, &DirectoryReader::requestInterruption);
+    QThreadPool::globalInstance()->start(reader);
 }
 
 void PathActionDialog::collapsePath( // NOLINT(readability-convert-member-functions-to-static)

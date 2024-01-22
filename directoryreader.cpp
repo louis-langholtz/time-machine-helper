@@ -1,16 +1,41 @@
 #include <sys/xattr.h> // for listxattr system calls
 
-#include <chrono>
 #include <filesystem>
 #include <optional>
+#include <stdexcept>
 #include <sstream>
 
 #include <QDeadlineTimer>
+#include <QEventLoop>
 #include <QTreeWidgetItem>
 
 #include "directoryreader.h"
 
 namespace {
+
+template <class T>
+struct AtomicIntegerHolder
+{
+    QAtomicInteger<T> *held{};
+    T originalValue{};
+
+    AtomicIntegerHolder(QAtomicInteger<T> *t, T value): held{t}
+    {
+        if (this->held) {
+            this->originalValue = std::exchange(*(this->held), value);
+        }
+    }
+
+    ~AtomicIntegerHolder() noexcept
+    {
+        if (this->held) {
+            (void) std::exchange(*(this->held), this->originalValue);
+        }
+    }
+
+    AtomicIntegerHolder(const AtomicIntegerHolder& other) = delete;
+    auto operator=(const AtomicIntegerHolder& other) -> AtomicIntegerHolder = delete;
+};
 
 // From https://stackoverflow.com/a/236803/7410358
 template <typename Out>
@@ -158,26 +183,44 @@ auto okay(QDir::Filters filters,
 
 DirectoryReader::DirectoryReader(std::filesystem::path dir,
                                  QObject *parent):
-    QThread{parent},
+    QObject{parent},
     directory{std::move(dir)}
-{}
+{
+}
 
 DirectoryReader::~DirectoryReader()
 {
     if (this->isRunning()) {
-        qDebug() << "DirectoryReader::~DirectoryReader called while running";
+        qDebug() << "DirectoryReader::~DirectoryReader awaiting runner end";
+        QEventLoop loop;
+        connect(this, &DirectoryReader::ended, &loop, &QEventLoop::quit);
+        this->requestInterruption();
+        loop.exec();
+        qDebug() << "DirectoryReader::~DirectoryReader runner ended"
+                 << !(this->isRunning());
     }
+}
 
-    this->requestInterruption();
+auto DirectoryReader::isRunning() const noexcept -> bool
+{
+    return this->running;
+}
 
-    using namespace std::literals::chrono_literals;
-    constexpr auto initialWait = 500ms;
-    if (this->wait(QDeadlineTimer(initialWait))) {
-        return;
-    }
+auto DirectoryReader::isInterruptionRequested() const noexcept
+    -> bool
+{
+    return this->interrupt;
+}
 
-    this->terminate();
-    this->wait();
+void DirectoryReader::requestInterruption()
+{
+    qDebug() << "DirectoryReader::requestInterruption called for" << this->directory;
+    this->interrupt = true;
+}
+
+auto DirectoryReader::path() const -> std::filesystem::path
+{
+    return this->directory;
 }
 
 auto DirectoryReader::filter() const noexcept
@@ -204,7 +247,10 @@ void DirectoryReader::setReadAttributes(bool value)
 
 void DirectoryReader::run()
 {
-    QThread::setTerminationEnabled(true);
+    const AtomicIntegerHolder hold(&(this->running), true);
+    if (hold.originalValue) {
+        throw std::logic_error{"called while running"};
+    }
     this->read();
 }
 
@@ -228,7 +274,7 @@ void DirectoryReader::read(const std::filesystem::directory_iterator& it)
     auto filenames = QSet<QString>{};
     for (const auto& dirEntry: it) {
         if (this->isInterruptionRequested() || !read(dirEntry, filenames)) {
-            return;
+            break;
         }
     }
     emit ended(this->directory, std::error_code{}, filenames);

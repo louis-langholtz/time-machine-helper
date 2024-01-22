@@ -34,16 +34,13 @@
 #include <QApplication>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QHeaderView>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
-#include <QPushButton>
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStatusBar>
-#include <QTableWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -928,6 +925,7 @@ auto totalHeight(QTableWidget *tableView) -> int
 
 MainWindow::MainWindow(QWidget *parent):
     QMainWindow(parent),
+    directoryReaderThreadPool(new QThreadPool(this)),
     actionAbout(new QAction(this)),
     actionQuit(new QAction(this)),
     actionSettings(new QAction(this)),
@@ -1055,6 +1053,9 @@ MainWindow::MainWindow(QWidget *parent):
     };
     static const auto margins = QMargins{10, 10, 10, 10};
     static constexpr auto frameShape = QFrame::StyledPanel;
+
+    this->directoryReaderThreadPool->setMaxThreadCount(
+        std::min(QThread::idealThreadCount(), 4));
 
     // setup toolBar...
     this->toolBar->setObjectName("toolBar");
@@ -1830,20 +1831,30 @@ void MainWindow::updatePathInfo(const std::string& pathName)
         qDebug() << "blocking reader for" << pathName;
         return;
     }
-    it->second = new DirectoryReader(pathName, this);
-    connect(it->second, &DirectoryReader::ended,
-            this, &MainWindow::handleDirectoryReaderEnded);
+    it->second = new DirectoryReader(pathName);
+    it->second->setAutoDelete(true);
     connect(it->second, &DirectoryReader::entry,
             this, &MainWindow::handleDirectoryReaderEntry);
-    connect(it->second, &DirectoryReader::finished,
-            it->second, &QObject::deleteLater);
+    connect(it->second, &DirectoryReader::ended,
+            this, &MainWindow::handleDirectoryReaderEnded);
+    connect(it->second, &DirectoryReader::ended,
+            this, [it](){
+        if (!(it->second)) {
+            qDebug() << "ended reader already reset???";
+            return;
+        }
+    });
     connect(it->second, &DirectoryReader::destroyed,
-            this, [it](QObject *){
-        it->second = nullptr;
+            this, [this,it](QObject *){
+        if (!(it->second)) {
+            qDebug() << "reader already reset for" << it->first;
+            return;
+        }
+        this->directoryReaders.erase(it);
     });
     connect(this, &MainWindow::destroyed,
-            it->second, &DirectoryReader::quit);
-    it->second->start();
+            it->second, &DirectoryReader::requestInterruption);
+    this->directoryReaderThreadPool->start(it->second);
 }
 
 void MainWindow::deleteSelectedBackups()
